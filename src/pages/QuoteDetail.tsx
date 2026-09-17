@@ -10,8 +10,11 @@ import {
   Loader2,
   Clock,
   Sparkles,
+  PackageCheck,
+  ExternalLink,
 } from 'lucide-react'
 import { quoteService } from '@/services/quotes'
+import { orderService } from '@/services/orders'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
   QuoteRecord,
@@ -32,7 +35,10 @@ import {
   formatDateBR,
   formatDateTimeBR,
   formatDateExtendedBR,
+  formatOrderNumber,
+  formatQuoteNumber,
   maskPhoneBR,
+  calculateCommission,
   CORTEPLAN_COMPANY_INFO,
 } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -48,6 +54,7 @@ export default function QuoteDetail() {
   const [quote, setQuote] = useState<QuoteRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [statusLoading, setStatusLoading] = useState(false)
+  const [generatingOrder, setGeneratingOrder] = useState(false)
 
   // Estado do Modo de Diagramação / Ajuste Manual de Layout (estilo CorelDRAW)
   const [isLayoutEditMode, setIsLayoutEditMode] = useState(false)
@@ -180,6 +187,28 @@ export default function QuoteDetail() {
     }
   }, [searchParams, quote, loading])
 
+  const handleGenerateOrder = async () => {
+    if (!quote) return
+    if (quote.status !== 'Enviado' && quote.status !== 'Aprovado') {
+      toast.warning('Apenas orçamentos com status "Enviado" ou "Aprovado" podem gerar pedido.')
+      return
+    }
+
+    setGeneratingOrder(true)
+    try {
+      const userName = user?.name || 'Gustavo'
+      const order = await orderService.createFromQuote(quote, userName)
+      toast.success(`Pedido ${formatOrderNumber(order.order_number)} gerado com sucesso!`)
+      await loadQuote()
+      navigate(`/pedidos/${order.id}`)
+    } catch (err) {
+      console.error('Erro ao gerar pedido:', err)
+      toast.error('Erro ao gerar pedido.')
+    } finally {
+      setGeneratingOrder(false)
+    }
+  }
+
   const handleUpdateStatus = async (newStatus: QuoteStatus) => {
     if (!id || !quote) return
     setStatusLoading(true)
@@ -311,14 +340,46 @@ export default function QuoteDetail() {
               Proposta Nº {quote.quote_number}
             </span>
             {getStatusBadge(quote.status)}
+            {quote.order_number && (
+              <Link
+                to={`/pedidos/${quote.order_id || ''}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-orange-50 text-[#E66812] border border-orange-200 hover:bg-orange-100 transition-colors"
+                title="Ver pedido vinculado"
+              >
+                <PackageCheck className="h-3.5 w-3.5" />
+                <span>Pedido {formatOrderNumber(quote.order_number)}</span>
+                <ExternalLink className="h-3 w-3 opacity-60" />
+              </Link>
+            )}
           </div>
           <p className="text-xs text-slate-500">
             Layout no padrão oficial <strong>CORTEPLAN</strong> &bull; Emitido em{' '}
             {formatDateBR(quote.created)}
+            {quote.order_number && (
+              <span className="ml-1 text-[#E66812] font-semibold">
+                &bull; Pedido vinculado: {formatOrderNumber(quote.order_number)}
+              </span>
+            )}
           </p>
         </div>
 
         <div className="flex items-center gap-3 self-start md:self-auto shrink-0 flex-wrap">
+          {/* Ação "Gerar pedido" disponível para Enviado ou Aprovado */}
+          {(quote.status === 'Enviado' || quote.status === 'Aprovado') && (
+            <Button
+              disabled={generatingOrder}
+              onClick={handleGenerateOrder}
+              className="rounded-xl bg-gradient-to-r from-[#E66812] to-[#F08A24] hover:from-[#d1590d] hover:to-[#e07b1a] text-white font-bold shadow-sm transition-all duration-200 hover:scale-[1.02]"
+            >
+              {generatingOrder ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <PackageCheck className="h-4 w-4 mr-1.5 text-white" />
+              )}
+              {quote.order_number ? 'Gerar Outro Pedido' : 'Gerar Pedido'}
+            </Button>
+          )}
+
           <CorelToolbar
             isEditMode={isLayoutEditMode}
             onToggleEditMode={() => {
@@ -385,6 +446,27 @@ export default function QuoteDetail() {
           <p className="text-xs text-slate-400 mt-0.5">
             Vendedor responsável: <strong className="text-white">{sellerName}</strong> &bull;
             Validade: {validityDays} dias
+            {quote.order_number && (
+              <span className="ml-2 text-amber-300 font-mono font-bold">
+                &bull; Pedido Vinculado: {formatOrderNumber(quote.order_number)}
+              </span>
+            )}
+            {(() => {
+              const { commissionAmount } = calculateCommission(
+                quote.items,
+                quote.discount_percent,
+                quote.commission_percent,
+              )
+              if (commissionAmount > 0) {
+                return (
+                  <span className="ml-2 text-emerald-400 font-medium">
+                    &bull; Comissão interna: {formatCurrencyBRL(commissionAmount)} (
+                    {quote.commission_percent}%)
+                  </span>
+                )
+              }
+              return null
+            })()}
           </p>
         </div>
 

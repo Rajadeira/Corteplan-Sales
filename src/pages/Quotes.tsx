@@ -12,14 +12,25 @@ import {
   Loader2,
   Calendar,
   Building,
+  PackageCheck,
+  ArrowRight,
 } from 'lucide-react'
 import { quoteService } from '@/services/quotes'
+import { orderService } from '@/services/orders'
+import { useAuth } from '@/contexts/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
 import type { QuoteRecord, QuoteStatus } from '@/types'
-import { formatCurrencyBRL, formatDateBR, formatQuoteNumber } from '@/types'
+import {
+  formatCurrencyBRL,
+  formatDateBR,
+  formatQuoteNumber,
+  formatOrderNumber,
+  calculateCommission,
+} from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { toast } from 'sonner'
 
 const statusList: { key: string; label: string }[] = [
   { key: 'Todos', label: 'Todos' },
@@ -31,8 +42,10 @@ const statusList: { key: string; label: string }[] = [
 
 export default function Quotes() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [quotes, setQuotes] = useState<QuoteRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [generatingOrderId, setGeneratingOrderId] = useState<string | null>(null)
 
   // Filtros e busca
   const [statusFilter, setStatusFilter] = useState('Todos')
@@ -79,6 +92,30 @@ export default function Quotes() {
     return counts
   }, [quotes])
 
+  // Gerar pedido a partir de orçamento
+  const handleGenerateOrder = async (quote: QuoteRecord) => {
+    if (quote.status !== 'Enviado' && quote.status !== 'Aprovado') {
+      toast.warning('Apenas orçamentos com status "Enviado" ou "Aprovado" podem gerar pedido.')
+      return
+    }
+
+    setGeneratingOrderId(quote.id)
+    try {
+      const userName = user?.name || 'Gustavo'
+      const order = await orderService.createFromQuote(quote, userName)
+      toast.success(
+        `Pedido ${formatOrderNumber(order.order_number)} gerado com sucesso a partir do ${formatQuoteNumber(quote.quote_number)}!`,
+      )
+      await loadData()
+      navigate(`/pedidos/${order.id}`)
+    } catch (err) {
+      console.error('Erro ao gerar pedido:', err)
+      toast.error('Erro ao gerar pedido a partir do orçamento.')
+    } finally {
+      setGeneratingOrderId(null)
+    }
+  }
+
   // Filtragem combinada client-side (para experiência instantânea e flexível de busca)
   const filteredQuotes = useMemo(() => {
     return quotes.filter((q) => {
@@ -87,21 +124,25 @@ export default function Quotes() {
         return false
       }
 
-      // Busca por número, cliente, item ou observação
+      // Busca por número, cliente, vendedor, pedido ou observação
       if (search.trim()) {
         const clean = search.toLowerCase().trim()
         const numFormatted = formatQuoteNumber(q.quote_number).toLowerCase()
         const numRaw = String(q.quote_number)
+        const orderNumStr = q.order_number ? formatOrderNumber(q.order_number).toLowerCase() : ''
         const clientName = (q.expand?.client?.name || '').toLowerCase()
         const clientCompany = (q.expand?.client?.company || '').toLowerCase()
+        const sellerName = (q.seller || q.expand?.seller_user?.name || '').toLowerCase()
         const obs = (q.observations || '').toLowerCase()
         const itemsText = (q.items || []).map((i) => i.description.toLowerCase()).join(' ')
 
         const matches =
           numFormatted.includes(clean) ||
           numRaw.includes(clean) ||
+          orderNumStr.includes(clean) ||
           clientName.includes(clean) ||
           clientCompany.includes(clean) ||
+          sellerName.includes(clean) ||
           obs.includes(clean) ||
           itemsText.includes(clean)
 
@@ -289,6 +330,18 @@ export default function Quotes() {
                       >
                         {formatQuoteNumber(quote.quote_number)}
                       </Link>
+
+                      {/* Exibir o número do pedido vinculado caso já tenha gerado */}
+                      {quote.order_number && (
+                        <Link
+                          to={`/pedidos/${quote.order_id || ''}`}
+                          className="flex items-center gap-1 font-mono text-[11px] text-[#E66812] hover:underline mt-1 font-semibold"
+                          title="Ver pedido vinculado"
+                        >
+                          <PackageCheck className="h-3 w-3" />
+                          <span>{formatOrderNumber(quote.order_number)}</span>
+                        </Link>
+                      )}
                     </td>
 
                     {/* Cliente */}
@@ -315,16 +368,38 @@ export default function Quotes() {
                       {formatDateBR(quote.created)}
                     </td>
 
-                    {/* Valor Total */}
+                    {/* Valor Total + Comissão Secundária */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
-                      <span className="font-mono font-bold text-xs sm:text-sm text-slate-900">
+                      <span className="font-mono font-bold text-xs sm:text-sm text-slate-900 block">
                         {formatCurrencyBRL(quote.total)}
                       </span>
-                      {quote.discount_percent > 0 && (
-                        <span className="text-[10px] text-emerald-600 block">
-                          -{quote.discount_percent}% desc.
-                        </span>
-                      )}
+                      {(() => {
+                        const sellerName =
+                          quote.seller || quote.expand?.seller_user?.name || 'Gustavo'
+                        const { commissionAmount } = calculateCommission(
+                          quote.items,
+                          quote.discount_percent,
+                          quote.commission_percent,
+                        )
+                        if (commissionAmount > 0) {
+                          return (
+                            <span
+                              className="text-[11px] text-slate-500 block truncate"
+                              title={`Comissão calculada: ${formatCurrencyBRL(commissionAmount)} — ${sellerName}`}
+                            >
+                              Comissão: {formatCurrencyBRL(commissionAmount)} — {sellerName}
+                            </span>
+                          )
+                        }
+                        if (sellerName) {
+                          return (
+                            <span className="text-[11px] text-slate-400 block truncate">
+                              Vendedor: {sellerName}
+                            </span>
+                          )
+                        }
+                        return null
+                      })()}
                     </td>
 
                     {/* Status */}
@@ -332,9 +407,32 @@ export default function Quotes() {
                       {getStatusBadge(quote.status)}
                     </td>
 
-                    {/* Ações: Visualizar, Editar, Imprimir */}
+                    {/* Ações: Visualizar, Editar, Imprimir e Gerar Pedido */}
                     <td className="py-3.5 px-5 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {/* Ação "Gerar pedido" disponível para Enviado ou Aprovado */}
+                        {(quote.status === 'Enviado' || quote.status === 'Aprovado') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={generatingOrderId === quote.id}
+                            onClick={() => handleGenerateOrder(quote)}
+                            className="h-8 px-2.5 text-xs font-semibold rounded-lg bg-orange-50/70 border-orange-200 text-[#E66812] hover:bg-[#F08A24] hover:text-white transition-all shadow-2xs"
+                            title={
+                              quote.order_number
+                                ? `Já possui pedido vinculado (${formatOrderNumber(quote.order_number)}). Clique para gerar novo se necessário.`
+                                : 'Gerar Pedido a partir deste orçamento'
+                            }
+                          >
+                            {generatingOrderId === quote.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <PackageCheck className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            Gerar pedido
+                          </Button>
+                        )}
+
                         <Button
                           variant="ghost"
                           size="icon"
@@ -386,6 +484,16 @@ export default function Quotes() {
                   {getStatusBadge(quote.status)}
                 </div>
 
+                {quote.order_number && (
+                  <Link
+                    to={`/pedidos/${quote.order_id || ''}`}
+                    className="inline-flex items-center gap-1 text-[11px] text-[#E66812] font-mono font-semibold"
+                  >
+                    <PackageCheck className="h-3 w-3" />
+                    Pedido {formatOrderNumber(quote.order_number)}
+                  </Link>
+                )}
+
                 <div>
                   <Link
                     to={`/orcamentos/${quote.id}`}
@@ -404,6 +512,23 @@ export default function Quotes() {
                     <span className="font-mono font-bold text-slate-900">
                       {formatCurrencyBRL(quote.total)}
                     </span>
+                    {(() => {
+                      const sellerName =
+                        quote.seller || quote.expand?.seller_user?.name || 'Gustavo'
+                      const { commissionAmount } = calculateCommission(
+                        quote.items,
+                        quote.discount_percent,
+                        quote.commission_percent,
+                      )
+                      if (commissionAmount > 0) {
+                        return (
+                          <span className="text-[10px] text-slate-500 block">
+                            Comissão: {formatCurrencyBRL(commissionAmount)} — {sellerName}
+                          </span>
+                        )
+                      }
+                      return null
+                    })()}
                   </div>
 
                   <div className="text-right">
@@ -412,7 +537,23 @@ export default function Quotes() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-1 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-end gap-1 pt-2 border-t border-slate-100 flex-wrap">
+                  {(quote.status === 'Enviado' || quote.status === 'Aprovado') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={generatingOrderId === quote.id}
+                      onClick={() => handleGenerateOrder(quote)}
+                      className="h-8 text-xs font-semibold bg-orange-50 text-[#E66812] border-orange-200"
+                    >
+                      {generatingOrderId === quote.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                      ) : (
+                        <PackageCheck className="h-3.5 w-3.5 mr-1" />
+                      )}
+                      Gerar pedido
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"

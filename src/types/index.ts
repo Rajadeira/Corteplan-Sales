@@ -14,9 +14,29 @@ export interface ClientRecord extends RecordModel {
   }
 }
 
+export type ItemCategory =
+  | 'Mobiliário'
+  | 'Comunicação Visual'
+  | 'Serralheria'
+  | 'Vidraçaria'
+  | 'Frete'
+  | 'Instalação'
+  | 'Outros'
+
+export const ITEM_CATEGORIES: ItemCategory[] = [
+  'Mobiliário',
+  'Comunicação Visual',
+  'Serralheria',
+  'Vidraçaria',
+  'Frete',
+  'Instalação',
+  'Outros',
+]
+
 export interface QuoteItem {
   id?: string
   description: string
+  category?: ItemCategory | string
   quantity: number
   unit: 'un' | 'm²' | 'm' | 'kit' | 'hora'
   unit_price: number
@@ -33,9 +53,18 @@ export interface QuoteInstallment {
 }
 
 export type QuoteStatus = 'Rascunho' | 'Enviado' | 'Aprovado' | 'Rejeitado'
+export type OrderStatus = 'Aberto' | 'Em Produção' | 'Concluído' | 'Cancelado'
+export type UserRole = 'Administrador' | 'Vendedor'
+
+export interface AppUserRecord extends RecordModel {
+  name: string
+  email: string
+  avatar?: string
+  role?: UserRole
+}
 
 export interface StatusHistoryEntry {
-  status: QuoteStatus
+  status: QuoteStatus | OrderStatus | string
   changed_at: string
   changed_by: string
 }
@@ -57,6 +86,10 @@ export interface QuoteRecord extends RecordModel {
   pis?: number
   cofins?: number
   seller?: string
+  seller_user?: string
+  commission_percent?: number
+  order_number?: number
+  order_id?: string
   validity_days?: number
   delivery_term?: string
   payment_terms?: string
@@ -67,6 +100,42 @@ export interface QuoteRecord extends RecordModel {
 
   expand?: {
     client?: ClientRecord
+    seller_user?: AppUserRecord
+    [key: string]: unknown
+  }
+}
+
+export interface OrderRecord extends RecordModel {
+  order_number: number
+  client: string
+  quote?: string
+  quote_number?: number
+  items: QuoteItem[]
+  discount_percent: number
+  subtotal: number
+  total: number
+  status: OrderStatus
+  observations?: string
+  status_history?: StatusHistoryEntry[]
+
+  seller?: string
+  seller_user?: string
+  commission_percent?: number
+  commission_value?: number
+  validity_days?: number
+  delivery_term?: string
+  payment_terms?: string
+  installments?: QuoteInstallment[]
+  icms?: number
+  ipi?: number
+  pis?: number
+  cofins?: number
+  layout_config?: ProposalLayoutConfig
+
+  expand?: {
+    client?: ClientRecord
+    quote?: QuoteRecord
+    seller_user?: AppUserRecord
     [key: string]: unknown
   }
 }
@@ -132,6 +201,51 @@ export function formatCurrencyBRL(value: number): string {
 
 export function formatQuoteNumber(num: number): string {
   return `ORÇ-${String(num || 0).padStart(3, '0')}`
+}
+
+export function formatOrderNumber(num: number): string {
+  return `PED-${String(num || 0).padStart(3, '0')}`
+}
+
+/**
+ * Regra de cálculo de comissão da Corteplan:
+ * "A base de cálculo é o valor dos PRODUTOS, ou seja, o total das linhas de itens do orçamento
+ * EXCETUANDO: o valor correspondente aos impostos e qualquer item cuja categoria seja 'Frete' ou 'Instalação'.
+ * Comissão = (soma das linhas comissionáveis, com desconto proporcional aplicado) x percentual de comissão."
+ */
+export function calculateCommission(
+  items: QuoteItem[] = [],
+  discountPercent: number = 0,
+  commissionPercent: number = 0,
+): { commissionBase: number; commissionAmount: number } {
+  if (!items || items.length === 0 || !commissionPercent || commissionPercent <= 0) {
+    return { commissionBase: 0, commissionAmount: 0 }
+  }
+
+  // Soma de todas as linhas de itens comissionáveis (excluindo Frete e Instalação)
+  // Impostos (icms, ipi, pis, cofins) ficam fora da base por definição
+  let comissionableSubtotal = 0
+  for (const item of items) {
+    const cat = (item.category || '').toLowerCase().trim()
+    if (cat === 'frete' || cat === 'instalação' || cat === 'instalacao') {
+      continue
+    }
+    const qty = Number(item.quantity) || 0
+    const price = Number(item.unit_price) || 0
+    comissionableSubtotal += qty * price
+  }
+
+  // Desconto proporcional aplicado apenas sobre as linhas comissionáveis
+  const discountRate = Math.max(0, Math.min(100, Number(discountPercent) || 0)) / 100
+  const commissionBase = Math.max(0, comissionableSubtotal * (1 - discountRate))
+
+  const commRate = Math.max(0, Number(commissionPercent) || 0) / 100
+  const commissionAmount = Math.round(commissionBase * commRate * 100) / 100
+
+  return {
+    commissionBase: Math.round(commissionBase * 100) / 100,
+    commissionAmount,
+  }
 }
 
 export function formatDateBR(dateStr: string): string {

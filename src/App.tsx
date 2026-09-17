@@ -13,10 +13,12 @@ import Register from './pages/Register'
 import Clients from './pages/Clients'
 import ClientDetail from './pages/ClientDetail'
 import Quotes from './pages/Quotes'
-import QuoteForm from './pages/QuoteForm'
 import QuoteDetail from './pages/QuoteDetail'
+import QuoteForm from './pages/QuoteForm'
+import Orders from './pages/Orders'
+import OrderDetail from './pages/OrderDetail'
+import Users from './pages/Users'
 import NotFound from './pages/NotFound'
-
 const App = () => (
   <BrowserRouter>
     <AuthProvider>
@@ -43,6 +45,9 @@ const App = () => (
             <Route path="/orcamentos/novo" element={<QuoteForm />} />
             <Route path="/orcamentos/:id" element={<QuoteDetail />} />
             <Route path="/orcamentos/:id/editar" element={<QuoteForm />} />
+            <Route path="/pedidos" element={<Orders />} />
+            <Route path="/pedidos/:id" element={<OrderDetail />} />
+            <Route path="/usuarios" element={<Users />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

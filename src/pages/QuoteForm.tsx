@@ -22,9 +22,24 @@ import {
 import { compressProductImage } from '@/lib/imageUtils'
 import { quoteService } from '@/services/quotes'
 import { clientService } from '@/services/clients'
+import { userService } from '@/services/users'
 import { useAuth } from '@/contexts/AuthContext'
-import type { ClientRecord, QuoteItem, QuoteRecord, QuoteInstallment } from '@/types'
-import { formatCurrencyBRL, formatQuoteNumber, maskPhoneBR, DEFAULT_TAX_RATES } from '@/types'
+import type {
+  ClientRecord,
+  QuoteItem,
+  QuoteRecord,
+  QuoteInstallment,
+  AppUserRecord,
+  ItemCategory,
+} from '@/types'
+import {
+  formatCurrencyBRL,
+  formatQuoteNumber,
+  maskPhoneBR,
+  DEFAULT_TAX_RATES,
+  ITEM_CATEGORIES,
+  calculateCommission,
+} from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -76,8 +91,11 @@ export default function QuoteForm() {
   const [discountPercent, setDiscountPercent] = useState<number>(0)
   const [observations, setObservations] = useState<string>('')
 
-  // Novos campos CORTEPLAN
-  const [seller, setSeller] = useState<string>('Gustavo Tibério')
+  // Novos campos CORTEPLAN & Vendedores/Comissão
+  const [usersList, setUsersList] = useState<AppUserRecord[]>([])
+  const [selectedSellerUserId, setSelectedSellerUserId] = useState<string>('')
+  const [seller, setSeller] = useState<string>('Gustavo')
+  const [commissionPercent, setCommissionPercent] = useState<number>(5)
   const [validityDays, setValidityDays] = useState<number>(5)
   const [deliveryTerm, setDeliveryTerm] = useState<string>('À Combinar')
   const [paymentTerms, setPaymentTerms] = useState<string>('Entrada 50% + 2x')
@@ -119,8 +137,12 @@ export default function QuoteForm() {
     const initialize = async () => {
       setLoading(true)
       try {
-        const clientList = await clientService.getAll()
+        const [clientList, usersData] = await Promise.all([
+          clientService.getAll(),
+          userService.getAll().catch(() => []),
+        ])
         setClients(clientList)
+        setUsersList(usersData)
 
         if (isEditing && id) {
           const q = await quoteService.getById(id)
@@ -145,7 +167,20 @@ export default function QuoteForm() {
           setDiscountPercent(q.discount_percent || 0)
           setObservations(q.observations || '')
 
-          setSeller(q.seller || user?.name || 'Gustavo Tibério')
+          setSeller(q.seller || user?.name || 'Gustavo')
+          if (q.seller_user) {
+            setSelectedSellerUserId(q.seller_user)
+          } else {
+            // Tenta casar pelo nome
+            const matched = usersData.find(
+              (u) =>
+                u.name.toLowerCase() === (q.seller || '').toLowerCase() ||
+                (q.seller || '').toLowerCase().includes(u.name.toLowerCase()),
+            )
+            if (matched) setSelectedSellerUserId(matched.id)
+          }
+
+          setCommissionPercent(q.commission_percent !== undefined ? q.commission_percent : 0)
           setValidityDays(q.validity_days !== undefined ? q.validity_days : 5)
           setDeliveryTerm(q.delivery_term || 'À Combinar')
           setPaymentTerms(q.payment_terms || 'Entrada 50% + 2x')
@@ -183,8 +218,20 @@ export default function QuoteForm() {
           const next = await quoteService.getNextQuoteNumber()
           setQuoteNumber(next.nextNumber)
           setFormattedNumber(next.formatted)
+
+          // Seleção padrão do vendedor logado ou do primeiro usuário da lista
           if (user?.name) {
             setSeller(user.name)
+            const cur = usersData.find((u) => u.id === user.id || u.email === user.email)
+            if (cur) {
+              setSelectedSellerUserId(cur.id)
+            } else if (usersData.length > 0) {
+              setSelectedSellerUserId(usersData[0].id)
+              setSeller(usersData[0].name)
+            }
+          } else if (usersData.length > 0) {
+            setSelectedSellerUserId(usersData[0].id)
+            setSeller(usersData[0].name)
           }
         }
       } catch (err) {
@@ -240,6 +287,15 @@ export default function QuoteForm() {
     (Number(icms) || 0) + (Number(ipi) || 0) + (Number(pis) || 0) + (Number(cofins) || 0)
   // Total da proposta: se houver impostos discriminados, soma ao subtotal líquido; caso contrário subtotal - desconto
   const total = Math.max(0, subtotal - discountAmount + taxesTotal)
+
+  // Cálculo de comissão em tempo real com regra restrita da Corteplan:
+  // "A base de cálculo é o valor dos PRODUTOS... EXCETUANDO: o valor correspondente aos impostos e qualquer item cuja categoria seja 'Frete' ou 'Instalação'.
+  // Comissão = (soma das linhas comissionáveis, com desconto proporcional aplicado) x percentual de comissão"
+  const { commissionBase, commissionAmount } = calculateCommission(
+    items,
+    discountPercent,
+    commissionPercent,
+  )
 
   // Gerador automático de parcelas sugeridas a partir do total
   const handleAutoGenerateInstallments = (count: number) => {
@@ -387,6 +443,7 @@ export default function QuoteForm() {
     setSaving(true)
     const cleanItems: QuoteItem[] = items.map((it) => ({
       description: it.description.trim(),
+      category: it.category || 'Mobiliário',
       quantity: Number(it.quantity) || 1,
       unit: it.unit,
       unit_price: Number(it.unit_price) || 0,
@@ -412,7 +469,9 @@ export default function QuoteForm() {
         subtotal: Math.round(subtotal * 100) / 100,
         total: Math.round(total * 100) / 100,
         observations: observations.trim() || undefined,
-        seller: seller.trim() || 'Gustavo Tibério',
+        seller: seller.trim() || 'Gustavo',
+        seller_user: selectedSellerUserId || undefined,
+        commission_percent: Number(commissionPercent) || 0,
         validity_days: Number(validityDays) || 5,
         delivery_term: deliveryTerm.trim() || 'À Combinar',
         payment_terms: paymentTerms.trim() || 'Entrada 50% + 2x',
@@ -673,17 +732,52 @@ export default function QuoteForm() {
                       )}
                     </div>
 
-                    {/* Título do produto */}
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-semibold text-slate-700">
-                        Título do Item (ex: Carrinho Gourmet com Testeira.)
-                      </Label>
-                      <Input
-                        placeholder="Ex: Carrinho Gourmet com Testeira."
-                        value={item.description}
-                        onChange={(e) => handleItemChange(index, 'description', e.target.value)}
-                        className="bg-white text-xs sm:text-sm h-10 font-medium"
-                      />
+                    {/* Título do produto e Categoria (incluindo Frete e Instalação) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                      <div className="sm:col-span-8 space-y-1">
+                        <Label className="text-[11px] font-semibold text-slate-700">
+                          Título do Item (ex: Carrinho Gourmet com Testeira.)
+                        </Label>
+                        <Input
+                          placeholder="Ex: Carrinho Gourmet com Testeira."
+                          value={item.description}
+                          onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                          className="bg-white text-xs sm:text-sm h-10 font-medium"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-4 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-semibold text-slate-700">
+                            Categoria
+                          </Label>
+                          {(item.category === 'Frete' || item.category === 'Instalação') && (
+                            <span className="text-[10px] text-amber-700 font-semibold">
+                              Sem comissão
+                            </span>
+                          )}
+                        </div>
+                        <Select
+                          value={item.category || 'Mobiliário'}
+                          onValueChange={(val: ItemCategory) =>
+                            handleItemChange(index, 'category', val)
+                          }
+                        >
+                          <SelectTrigger className="bg-white h-10 text-xs sm:text-sm">
+                            <SelectValue placeholder="Categoria" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ITEM_CATEGORIES.map((cat) => (
+                              <SelectItem key={cat} value={cat}>
+                                {cat}{' '}
+                                {cat === 'Frete' || cat === 'Instalação'
+                                  ? '(Não comissionável)'
+                                  : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
 
                     {/* Quantidade, Unidade, Preço Unitário, Imposto do Item e Subtotal */}
@@ -1081,21 +1175,73 @@ export default function QuoteForm() {
             </div>
           </div>
 
-          {/* Seção 4: Condições Comerciais e Prazos */}
+          {/* Seção 4: Condições Comerciais, Vendedor e Comissão */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-              4. Condições Comerciais & Vendedor
+              4. Condições Comerciais, Vendedor & Comissão
             </h2>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Seleção do Vendedor entre os usuários */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-700">Vendedor Responsável</Label>
-                <Input
-                  placeholder="Ex: Gustavo Tibério"
-                  value={seller}
-                  onChange={(e) => setSeller(e.target.value)}
-                  className="text-xs sm:text-sm"
-                />
+                {usersList.length > 0 ? (
+                  <Select
+                    value={selectedSellerUserId}
+                    onValueChange={(val) => {
+                      setSelectedSellerUserId(val)
+                      const found = usersList.find((u) => u.id === val)
+                      if (found) setSeller(found.name)
+                    }}
+                  >
+                    <SelectTrigger className="text-xs sm:text-sm bg-white">
+                      <SelectValue placeholder="Selecione o vendedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {usersList.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name} {u.role ? `(${u.role})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    placeholder="Ex: Gustavo"
+                    value={seller}
+                    onChange={(e) => setSeller(e.target.value)}
+                    className="text-xs sm:text-sm"
+                  />
+                )}
+              </div>
+
+              {/* Comissão (%) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-slate-700">Comissão (%)</Label>
+                  <span className="text-[11px] font-mono font-bold text-emerald-700">
+                    = {formatCurrencyBRL(commissionAmount)}
+                  </span>
+                </div>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    placeholder="Ex: 5"
+                    value={commissionPercent}
+                    onChange={(e) => setCommissionPercent(parseFloat(e.target.value) || 0)}
+                    className="text-xs sm:text-sm font-mono pr-8"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                    %
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Base: produtos comissionáveis ({formatCurrencyBRL(commissionBase)}), excetuando
+                  impostos, Frete e Instalação.
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -1353,6 +1499,16 @@ export default function QuoteForm() {
                 <div className="text-2xl sm:text-3xl font-extrabold text-[#3A3A3C] font-mono tracking-tight transition-all duration-200">
                   {formatCurrencyBRL(total)}
                 </div>
+
+                {/* Linha discreta de comissão calculada (dado interno) */}
+                {commissionAmount > 0 && (
+                  <div className="pt-2 text-xs text-slate-500 border-t border-slate-100 flex items-center justify-between">
+                    <span>Comissão ({commissionPercent}%):</span>
+                    <span className="font-mono font-bold text-slate-800">
+                      {formatCurrencyBRL(commissionAmount)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 

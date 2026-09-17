@@ -18,6 +18,10 @@ export interface CreateQuoteData {
   pis?: number
   cofins?: number
   seller?: string
+  seller_user?: string
+  commission_percent?: number
+  order_number?: number
+  order_id?: string
   validity_days?: number
   delivery_term?: string
   payment_terms?: string
@@ -31,7 +35,7 @@ export const quoteService = {
   async getAll(): Promise<QuoteRecord[]> {
     return pb.collection('quotes').getFullList<QuoteRecord>({
       sort: '-quote_number',
-      expand: 'client',
+      expand: 'client,seller_user',
     })
   },
 
@@ -56,7 +60,7 @@ export const quoteService = {
     const res = await pb.collection('quotes').getList<QuoteRecord>(page, perPage, {
       filter: filterString || undefined,
       sort: '-quote_number',
-      expand: 'client',
+      expand: 'client,seller_user',
     })
     return {
       items: res.items,
@@ -67,7 +71,7 @@ export const quoteService = {
 
   async getById(id: string): Promise<QuoteRecord> {
     return pb.collection('quotes').getOne<QuoteRecord>(id, {
-      expand: 'client',
+      expand: 'client,seller_user',
     })
   },
 

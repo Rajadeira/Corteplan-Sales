@@ -5,6 +5,8 @@ import {
   Users,
   FileText,
   PlusCircle,
+  PackageCheck,
+  UserCheck,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -39,6 +41,8 @@ const navItems = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
   { name: 'Clientes', path: '/clientes', icon: Users },
   { name: 'Orçamentos', path: '/orcamentos', icon: FileText },
+  { name: 'Pedidos', path: '/pedidos', icon: PackageCheck },
+  { name: 'Usuários', path: '/usuarios', icon: UserCheck },
   { name: 'Novo Orçamento', path: '/orcamentos/novo', icon: PlusCircle },
 ]
 
@@ -143,6 +147,9 @@ export default function Layout() {
     if (path === '/orcamentos/novo') return 'Novo Orçamento'
     if (path.includes('/editar')) return 'Editar Orçamento'
     if (path.startsWith('/orcamentos/')) return 'Detalhes do Orçamento'
+    if (path === '/pedidos') return 'Pedidos'
+    if (path.startsWith('/pedidos/')) return 'Detalhes do Pedido'
+    if (path === '/usuarios') return 'Usuários'
     return 'Mobiliário & Visual'
   }
 
