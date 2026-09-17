@@ -93,7 +93,7 @@ export default function Register() {
 
         {/* Logo superior */}
         <div className="flex items-center gap-3 relative z-10">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#1E3A5F] to-blue-600 text-white shadow-lg shadow-black/40 border border-slate-700/50">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#3A3A3C] to-[#F08A24] text-white shadow-lg shadow-black/40 border border-slate-700/50">
             <Armchair className="h-6 w-6 text-amber-400" />
           </div>
           <div>
@@ -292,7 +292,7 @@ export default function Register() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full h-11 bg-[#1E3A5F] hover:bg-[#2A4E7A] text-white font-semibold text-sm rounded-xl transition-all duration-200 shadow-md shadow-[#1E3A5F]/20 hover:scale-[1.01] mt-2"
+              className="w-full h-11 bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-semibold text-sm rounded-xl transition-all duration-200 shadow-md shadow-black/20 hover:scale-[1.01] mt-2"
             >
               {loading ? (
                 <>
@@ -313,7 +313,7 @@ export default function Register() {
               Já tem uma conta cadastrada?{' '}
               <Link
                 to="/login"
-                className="font-semibold text-[#1E3A5F] hover:text-[#2A4E7A] hover:underline"
+                className="font-semibold text-[#3A3A3C] hover:text-[#2D2D2F] hover:underline"
               >
                 Fazer login
               </Link>

@@ -14,7 +14,20 @@ import {
 } from 'lucide-react'
 import { quoteService } from '@/services/quotes'
 import { useAuth } from '@/contexts/AuthContext'
-import type { QuoteRecord, QuoteStatus } from '@/types'
+import type {
+  QuoteRecord,
+  QuoteStatus,
+  ProposalLayoutConfig,
+  ProposalBlockId,
+  BlockStyleConfig,
+} from '@/types'
+import {
+  CorelToolbar,
+  LayoutBlockWrapper,
+  DEFAULT_PAGE1_ORDER,
+  DEFAULT_PAGE2_ORDER,
+  DEFAULT_BLOCK_STYLE,
+} from '@/components/ProposalLayoutEditor'
 import {
   formatCurrencyBRL,
   formatDateBR,
@@ -37,16 +50,120 @@ export default function QuoteDetail() {
   const [loading, setLoading] = useState(true)
   const [statusLoading, setStatusLoading] = useState(false)
 
+  // Estado do Modo de Diagramação / Ajuste Manual de Layout (estilo CorelDRAW)
+  const [isLayoutEditMode, setIsLayoutEditMode] = useState(false)
+  const [selectedBlockId, setSelectedBlockId] = useState<ProposalBlockId | null>(null)
+  const [layoutConfig, setLayoutConfig] = useState<ProposalLayoutConfig>({
+    version: 1,
+    page1Order: DEFAULT_PAGE1_ORDER,
+    page2Order: DEFAULT_PAGE2_ORDER,
+    blocks: {},
+  })
+  const [savingLayout, setSavingLayout] = useState(false)
+
   const loadQuote = async () => {
     if (!id) return
     try {
       const data = await quoteService.getById(id)
       setQuote(data)
+      if (data.layout_config && typeof data.layout_config === 'object') {
+        setLayoutConfig({
+          version: data.layout_config.version || 1,
+          page1Order: data.layout_config.page1Order || DEFAULT_PAGE1_ORDER,
+          page2Order: data.layout_config.page2Order || DEFAULT_PAGE2_ORDER,
+          blocks: data.layout_config.blocks || {},
+        })
+      }
     } catch (err) {
       console.error('Erro ao carregar orçamento:', err)
       toast.error('Orçamento não encontrado.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Manipulação de estilos dos blocos
+  const handleUpdateBlockStyle = (
+    blockId: ProposalBlockId,
+    newStyle: Partial<BlockStyleConfig>,
+  ) => {
+    setLayoutConfig((prev) => ({
+      ...prev,
+      blocks: {
+        ...prev.blocks,
+        [blockId]: {
+          ...(prev.blocks[blockId] || DEFAULT_BLOCK_STYLE),
+          ...newStyle,
+        },
+      },
+    }))
+  }
+
+  const handleResetBlock = (blockId: ProposalBlockId) => {
+    setLayoutConfig((prev) => {
+      const nextBlocks = { ...prev.blocks }
+      delete nextBlocks[blockId]
+      return {
+        ...prev,
+        blocks: nextBlocks,
+      }
+    })
+    toast.success('Bloco restaurado para o alinhamento padrão.')
+  }
+
+  const handleResetAllLayout = () => {
+    setLayoutConfig({
+      version: 1,
+      page1Order: DEFAULT_PAGE1_ORDER,
+      page2Order: DEFAULT_PAGE2_ORDER,
+      blocks: {},
+    })
+    setSelectedBlockId(null)
+    toast.success('Layout restaurado para o padrão original da Corteplan.')
+  }
+
+  const handleMoveBlockOrder = (blockId: ProposalBlockId, direction: 'up' | 'down') => {
+    setLayoutConfig((prev) => {
+      const isPage1 = prev.page1Order.includes(blockId)
+      const listKey = isPage1 ? 'page1Order' : 'page2Order'
+      const list = [...prev[listKey]]
+      const index = list.indexOf(blockId)
+      if (index === -1) return prev
+
+      const targetIndex = direction === 'up' ? index - 1 : index + 1
+      if (targetIndex < 0 || targetIndex >= list.length) return prev
+
+      // Troca os elementos
+      const temp = list[index]
+      list[index] = list[targetIndex]
+      list[targetIndex] = temp
+
+      return {
+        ...prev,
+        [listKey]: list,
+      }
+    })
+  }
+
+  const handleSaveLayout = async () => {
+    if (!id) return
+    setSavingLayout(true)
+    try {
+      const toSave: ProposalLayoutConfig = {
+        ...layoutConfig,
+        version: 1,
+        updatedAt: new Date().toISOString(),
+      }
+      const updated = await quoteService.update(id, {
+        layout_config: toSave,
+      })
+      setQuote(updated)
+      toast.success('Layout personalizado salvo com sucesso!')
+    } catch (err) {
+      console.error('Erro ao salvar layout:', err)
+      toast.error('Erro ao salvar o layout diagramado.')
+    } finally {
+      setSavingLayout(false)
     }
   }
 
@@ -113,7 +230,7 @@ export default function QuoteDetail() {
     return (
       <div className="flex h-96 items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-slate-500">
-          <Loader2 className="h-8 w-8 animate-spin text-[#1E3A5F]" />
+          <Loader2 className="h-8 w-8 animate-spin text-[#3A3A3C]" />
           <p className="text-sm">Carregando proposta da Corteplan...</p>
         </div>
       </div>
@@ -191,7 +308,7 @@ export default function QuoteDetail() {
       <div className="print:hidden bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2">
           <div className="flex items-center gap-3">
-            <span className="font-mono text-3xl font-extrabold text-[#1E3A5F] tracking-tight">
+            <span className="font-mono text-2xl font-bold text-[#3A3A3C] tracking-tight">
               Proposta Nº {quote.quote_number}
             </span>
             {getStatusBadge(quote.status)}
@@ -202,25 +319,60 @@ export default function QuoteDetail() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 self-start md:self-auto shrink-0">
+        <div className="flex items-center gap-3 self-start md:self-auto shrink-0 flex-wrap">
+          <CorelToolbar
+            isEditMode={isLayoutEditMode}
+            onToggleEditMode={() => {
+              setIsLayoutEditMode((prev) => !prev)
+              setSelectedBlockId(null)
+            }}
+            selectedBlockId={selectedBlockId}
+            layoutConfig={layoutConfig}
+            onSelectBlock={setSelectedBlockId}
+            onUpdateBlockStyle={handleUpdateBlockStyle}
+            onResetBlock={handleResetBlock}
+            onResetAll={handleResetAllLayout}
+            onSaveLayout={handleSaveLayout}
+            saving={savingLayout}
+          />
+
           <Button
             variant="outline"
             onClick={() => navigate(`/orcamentos/${quote.id}/editar`)}
             className="rounded-xl border-slate-300 text-slate-700 hover:bg-slate-50 font-medium"
           >
-            <Edit className="h-4 w-4 mr-1.5 text-amber-600" />
+            <Edit className="h-4 w-4 mr-1.5 text-[#F08A24]" />
             Editar Proposta
           </Button>
 
           <Button
             onClick={() => window.print()}
-            className="rounded-xl bg-[#1E3A5F] hover:bg-[#2A4E7A] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
+            className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
           >
-            <Printer className="h-4 w-4 mr-1.5 text-amber-400" />
+            <Printer className="h-4 w-4 mr-1.5 text-[#F08A24]" />
             Imprimir / Salvar PDF
           </Button>
         </div>
       </div>
+
+      {/* Toolbar Expandida quando o modo de diagramação está ativo */}
+      {isLayoutEditMode && (
+        <CorelToolbar
+          isEditMode={true}
+          onToggleEditMode={() => {
+            setIsLayoutEditMode(false)
+            setSelectedBlockId(null)
+          }}
+          selectedBlockId={selectedBlockId}
+          layoutConfig={layoutConfig}
+          onSelectBlock={setSelectedBlockId}
+          onUpdateBlockStyle={handleUpdateBlockStyle}
+          onResetBlock={handleResetBlock}
+          onResetAll={handleResetAllLayout}
+          onSaveLayout={handleSaveLayout}
+          saving={savingLayout}
+        />
+      )}
 
       {/* Painel de Gestão de Status comercial (Escondido na impressão) */}
       <div className="print:hidden bg-slate-900 text-white p-5 rounded-2xl shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -284,237 +436,329 @@ export default function QuoteDetail() {
         <div className="max-w-[840px] mx-auto bg-white border border-slate-200 sm:rounded-xl shadow-lg print:border-none print:shadow-none print:max-w-none print:p-0">
           {/* =========================================================
               PÁGINA 1 — CABEÇALHO, ITENS, OBSERVAÇÕES E TOTAIS
+              (Com diagramação ajustável e ordenação personalizada)
               ========================================================= */}
-          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-[13px] leading-normal">
-            {/* Topo: Logo CORTEPLAN + QR Code + Dados da Empresa */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-6 border-b border-slate-200">
-              {/* Logo CORTEPLAN */}
-              <div className="flex items-center gap-4">
-                <CorteplanLogo width={190} height={46} />
+          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-[13px] leading-normal space-y-4">
+            {layoutConfig.page1Order.map((blockId) => {
+              if (blockId === 'header') {
+                return (
+                  <LayoutBlockWrapper
+                    key={blockId}
+                    id={blockId}
+                    isEditMode={isLayoutEditMode}
+                    isSelected={selectedBlockId === blockId}
+                    styleConfig={layoutConfig.blocks[blockId]}
+                    onSelect={setSelectedBlockId}
+                    onUpdateStyle={handleUpdateBlockStyle}
+                    onMoveOrder={handleMoveBlockOrder}
+                  >
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-6 border-b border-slate-200">
+                      <div className="flex items-center gap-4">
+                        <CorteplanLogo width={190} height={46} />
+                        <div
+                          className="hidden sm:flex flex-col items-center justify-center p-1 border border-slate-300 rounded bg-white"
+                          title="Código de autenticidade da proposta"
+                        >
+                          <QrCode className="h-10 w-10 text-slate-800" />
+                        </div>
+                      </div>
 
-                {/* QR Code ilustrativo como no documento original */}
-                <div
-                  className="hidden sm:flex flex-col items-center justify-center p-1 border border-slate-300 rounded bg-white"
-                  title="Código de autenticidade da proposta"
-                >
-                  <QrCode className="h-10 w-10 text-slate-800" />
-                </div>
-              </div>
+                      <div className="text-right text-[11px] sm:text-xs text-slate-600 leading-tight space-y-0.5">
+                        <div className="font-bold text-slate-900 tracking-wider">
+                          {CORTEPLAN_COMPANY_INFO.name}
+                        </div>
+                        <div>CNPJ: {CORTEPLAN_COMPANY_INFO.cnpj}</div>
+                        <div>{CORTEPLAN_COMPANY_INFO.address}</div>
+                        <div>Telefone: {CORTEPLAN_COMPANY_INFO.phone}</div>
+                        <div>E-mail: {CORTEPLAN_COMPANY_INFO.email}</div>
+                      </div>
+                    </div>
+                  </LayoutBlockWrapper>
+                )
+              }
 
-              {/* Dados Fixos da CORTEPLAN à direita */}
-              <div className="text-right text-[11px] sm:text-xs text-slate-600 leading-tight space-y-0.5">
-                <div className="font-bold text-slate-900 tracking-wider">
-                  {CORTEPLAN_COMPANY_INFO.name}
-                </div>
-                <div>CNPJ: {CORTEPLAN_COMPANY_INFO.cnpj}</div>
-                <div>{CORTEPLAN_COMPANY_INFO.address}</div>
-                <div>Telefone: {CORTEPLAN_COMPANY_INFO.phone}</div>
-                <div>E-mail: {CORTEPLAN_COMPANY_INFO.email}</div>
-              </div>
-            </div>
+              if (blockId === 'client') {
+                return (
+                  <LayoutBlockWrapper
+                    key={blockId}
+                    id={blockId}
+                    isEditMode={isLayoutEditMode}
+                    isSelected={selectedBlockId === blockId}
+                    styleConfig={layoutConfig.blocks[blockId]}
+                    onSelect={setSelectedBlockId}
+                    onUpdateStyle={handleUpdateBlockStyle}
+                    onMoveOrder={handleMoveBlockOrder}
+                  >
+                    <div className="pt-2 pb-2 space-y-0.5 text-xs text-slate-700 max-w-xl">
+                      <div className="font-bold text-slate-900 text-sm tracking-tight uppercase">
+                        {client?.name || 'CLIENTE NÃO IDENTIFICADO'}
+                        {client?.company && client.company !== client.name
+                          ? ` - ${client.company}`
+                          : ''}
+                      </div>
+                      <div className="text-slate-600">
+                        <span className="font-medium text-slate-700">CNPJ/CPF: </span>
+                        {client?.notes?.includes('CNPJ:')
+                          ? client.notes.split('CNPJ:')[1]?.split('\n')[0]?.trim()
+                          : 'Conforme cadastro'}
+                      </div>
+                      <div>
+                        {client?.address
+                          ? `${client.address}${client.city ? ` - ${client.city}` : ''}`
+                          : 'Endereço cadastrado'}
+                      </div>
+                      <div>
+                        <span className="font-medium text-slate-700">Telefone: </span>
+                        {maskPhoneBR(client?.phone || '')}
+                      </div>
+                      {client?.email && (
+                        <div>
+                          <span className="font-medium text-slate-700">E-mail: </span>
+                          {client.email}
+                        </div>
+                      )}
+                      <div>
+                        <span className="font-medium text-slate-700">Contato: </span>
+                        {client?.name?.split(' ')[0] || 'Responsável'}
+                      </div>
+                    </div>
+                  </LayoutBlockWrapper>
+                )
+              }
 
-            {/* Bloco Cliente + Número da Proposta & Data */}
-            <div className="pt-6 pb-6 flex flex-col sm:flex-row justify-between items-start gap-4">
-              {/* Dados do CLIENTE */}
-              <div className="space-y-0.5 text-xs text-slate-700 max-w-md">
-                <div className="font-bold text-slate-900 text-sm tracking-tight uppercase">
-                  {client?.name || 'CLIENTE NÃO IDENTIFICADO'}
-                  {client?.company && client.company !== client.name ? ` - ${client.company}` : ''}
-                </div>
-                <div className="text-slate-600">
-                  <span className="font-medium text-slate-700">CNPJ/CPF: </span>
-                  {client?.notes?.includes('CNPJ:')
-                    ? client.notes.split('CNPJ:')[1]?.split('\n')[0]?.trim()
-                    : 'Conforme cadastro'}
-                </div>
-                <div>
-                  {client?.address
-                    ? `${client.address}${client.city ? ` - ${client.city}` : ''}`
-                    : 'Endereço cadastrado'}
-                </div>
-                <div>
-                  <span className="font-medium text-slate-700">Telefone: </span>
-                  {maskPhoneBR(client?.phone || '')}
-                </div>
-                {client?.email && (
-                  <div>
-                    <span className="font-medium text-slate-700">E-mail: </span>
-                    {client.email}
-                  </div>
-                )}
-                <div>
-                  <span className="font-medium text-slate-700">Contato: </span>
-                  {client?.name?.split(' ')[0] || 'Responsável'}
-                </div>
-              </div>
+              if (blockId === 'title_date') {
+                return (
+                  <LayoutBlockWrapper
+                    key={blockId}
+                    id={blockId}
+                    isEditMode={isLayoutEditMode}
+                    isSelected={selectedBlockId === blockId}
+                    styleConfig={layoutConfig.blocks[blockId]}
+                    onSelect={setSelectedBlockId}
+                    onUpdateStyle={handleUpdateBlockStyle}
+                    onMoveOrder={handleMoveBlockOrder}
+                  >
+                    <div className="pt-1 pb-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100">
+                      <div>
+                        <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                          Proposta Nº {quote.quote_number}
+                        </h2>
+                      </div>
+                      <div className="text-left sm:text-right">
+                        <p className="text-[11px] sm:text-xs text-slate-600">
+                          {formatDateExtendedBR(quote.created, CORTEPLAN_COMPANY_INFO.city)}
+                        </p>
+                      </div>
+                    </div>
+                  </LayoutBlockWrapper>
+                )
+              }
 
-              {/* Título: "Proposta Nº 139" + Data por extenso */}
-              <div className="text-left sm:text-right space-y-1">
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                  Proposta Nº {quote.quote_number}
-                </h1>
-                <p className="text-xs text-slate-600">
-                  {formatDateExtendedBR(quote.created, CORTEPLAN_COMPANY_INFO.city)}
-                </p>
-              </div>
-            </div>
+              if (blockId === 'intro') {
+                return (
+                  <LayoutBlockWrapper
+                    key={blockId}
+                    id={blockId}
+                    isEditMode={isLayoutEditMode}
+                    isSelected={selectedBlockId === blockId}
+                    styleConfig={layoutConfig.blocks[blockId]}
+                    onSelect={setSelectedBlockId}
+                    onUpdateStyle={handleUpdateBlockStyle}
+                    onMoveOrder={handleMoveBlockOrder}
+                  >
+                    <div className="py-1 text-xs text-slate-700">
+                      <p>
+                        Atendendo à sua solicitação, apresentamos proposta com preços e condições
+                        técnicas e comerciais para o fornecimento solicitado:
+                      </p>
+                    </div>
+                  </LayoutBlockWrapper>
+                )
+              }
 
-            {/* Parágrafo introdutório fixo */}
-            <div className="py-2 mb-4 text-xs text-slate-700">
-              <p>
-                Atendendo à sua solicitação, apresentamos proposta com preços e condições técnicas e
-                comerciais para o fornecimento solicitado:
-              </p>
-            </div>
-
-            {/* Tabela de Itens */}
-            <div className="overflow-x-auto mb-6">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-t border-b border-slate-300 bg-slate-50/60 font-bold text-slate-900">
-                    <th className="py-2 px-2 w-10 text-center">Item</th>
-                    <th className="py-2 px-3">Descrição</th>
-                    <th className="py-2 px-3 text-center w-20">Quant.</th>
-                    <th className="py-2 px-3 text-right w-28">Valor Unit.</th>
-                    <th className="py-2 px-3 text-right w-28">Valor Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {quote.items?.map((item, index) => {
-                    const itemTotal = (item.quantity || 0) * (item.unit_price || 0)
-                    return (
-                      <React.Fragment key={index}>
-                        <tr className="align-top">
-                          <td className="py-3 px-2 text-center font-bold text-slate-800">
-                            {index + 1}
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="font-bold text-slate-900 text-[13px]">
-                              {item.description}
-                            </div>
-                          </td>
-                          <td className="py-3 px-3 text-center whitespace-nowrap text-slate-700">
-                            {item.quantity} {item.unit || 'un'}
-                          </td>
-                          <td className="py-3 px-3 text-right whitespace-nowrap font-mono text-slate-800">
-                            {formatCurrencyBRL(item.unit_price)}
-                          </td>
-                          <td className="py-3 px-3 text-right whitespace-nowrap font-mono font-bold text-slate-900">
-                            {formatCurrencyBRL(itemTotal)}
-                          </td>
-                        </tr>
-
-                        {/* Linha adicional com Imposto do item (se houver) e Descrição Técnica longa */}
-                        {(item.tax || item.technical_description) && (
-                          <tr className="bg-slate-50/40">
-                            <td></td>
-                            <td colSpan={4} className="pb-3 px-3 pt-0">
-                              {item.tax && item.tax > 0 ? (
-                                <div className="text-right text-[11px] text-slate-500 font-mono italic mb-1">
-                                  Imp: {formatCurrencyBRL(item.tax)}
-                                </div>
-                              ) : null}
-                              {item.technical_description && (
-                                <p className="text-[11px] text-slate-600 leading-relaxed whitespace-pre-line text-justify">
-                                  {item.technical_description}
-                                </p>
-                              )}
-                            </td>
+              if (blockId === 'items') {
+                return (
+                  <LayoutBlockWrapper
+                    key={blockId}
+                    id={blockId}
+                    isEditMode={isLayoutEditMode}
+                    isSelected={selectedBlockId === blockId}
+                    styleConfig={layoutConfig.blocks[blockId]}
+                    onSelect={setSelectedBlockId}
+                    onUpdateStyle={handleUpdateBlockStyle}
+                    onMoveOrder={handleMoveBlockOrder}
+                  >
+                    <div className="overflow-x-auto my-2">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-t border-b border-slate-300 bg-slate-50/60 font-bold text-slate-900">
+                            <th className="py-2 px-2 w-10 text-center">Item</th>
+                            <th className="py-2 px-3">Descrição</th>
+                            <th className="py-2 px-3 text-center w-20">Quant.</th>
+                            <th className="py-2 px-3 text-right w-28">Valor Unit.</th>
+                            <th className="py-2 px-3 text-right w-28">Valor Total</th>
                           </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {quote.items?.map((item, index) => {
+                            const itemTotal = (item.quantity || 0) * (item.unit_price || 0)
+                            return (
+                              <React.Fragment key={index}>
+                                <tr className="align-top">
+                                  <td className="py-3 px-2 text-center font-bold text-slate-800">
+                                    {index + 1}
+                                  </td>
+                                  <td className="py-3 px-3">
+                                    <div className="font-bold text-slate-900 text-[13px]">
+                                      {item.description}
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-3 text-center whitespace-nowrap text-slate-700">
+                                    {item.quantity} {item.unit || 'un'}
+                                  </td>
+                                  <td className="py-3 px-3 text-right whitespace-nowrap font-mono text-slate-800">
+                                    {formatCurrencyBRL(item.unit_price)}
+                                  </td>
+                                  <td className="py-3 px-3 text-right whitespace-nowrap font-mono font-bold text-slate-900">
+                                    {formatCurrencyBRL(itemTotal)}
+                                  </td>
+                                </tr>
+
+                                {(item.tax || item.technical_description) && (
+                                  <tr className="bg-slate-50/40">
+                                    <td></td>
+                                    <td colSpan={4} className="pb-3 px-3 pt-0">
+                                      {item.tax && item.tax > 0 ? (
+                                        <div className="text-right text-[11px] text-slate-500 font-mono italic mb-1">
+                                          Imp: {formatCurrencyBRL(item.tax)}
+                                        </div>
+                                      ) : null}
+                                      {item.technical_description && (
+                                        <p className="text-[11px] text-slate-600 leading-relaxed whitespace-pre-line text-justify">
+                                          {item.technical_description}
+                                        </p>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </LayoutBlockWrapper>
+                )
+              }
+
+              if (blockId === 'totals_obs') {
+                return (
+                  <LayoutBlockWrapper
+                    key={blockId}
+                    id={blockId}
+                    isEditMode={isLayoutEditMode}
+                    isSelected={selectedBlockId === blockId}
+                    styleConfig={layoutConfig.blocks[blockId]}
+                    onSelect={setSelectedBlockId}
+                    onUpdateStyle={handleUpdateBlockStyle}
+                    onMoveOrder={handleMoveBlockOrder}
+                  >
+                    <div className="pt-4 border-t border-slate-300 grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+                      {/* Observações da Proposta (Lado Esquerdo - 7 colunas) */}
+                      <div className="md:col-span-7 space-y-2 text-xs">
+                        <div className="font-bold text-slate-900 uppercase tracking-wide text-[11px]">
+                          Observações da Proposta
+                        </div>
+
+                        <div className="text-[11px] text-slate-600 leading-relaxed space-y-1.5 whitespace-pre-line">
+                          {quote.observations ? (
+                            <p>{quote.observations}</p>
+                          ) : (
+                            <>
+                              <p>
+                                <strong>Prazo de entrega:</strong> {deliveryTerm}
+                              </p>
+                              <p>
+                                <strong>Pagamento:</strong> {paymentTerms}
+                              </p>
+                              <p>
+                                Este orçamento contempla exclusivamente os itens, quantidades,
+                                materiais, acabamentos e especificações técnicas descritos na
+                                proposta.
+                              </p>
+                              <p>
+                                Itens, serviços ou soluções não mencionados expressamente estão fora
+                                do escopo e serão cotados separadamente, caso solicitados.
+                              </p>
+                              <p>
+                                Alterações ou inclusões após a aprovação poderão acarretar revisão
+                                de valores, prazos e condições comerciais.
+                              </p>
+                              <p>
+                                Componentes elétricos, quando aplicáveis, serão fornecidos prontos
+                                para conexão, cabendo ao cliente a disponibilização do ponto de
+                                alimentação conforme especificação técnica.
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Bloco de Totais (Lado Direito - 5 colunas) */}
+                      <div className="md:col-span-5 bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+                        <div className="flex justify-between items-center text-slate-700">
+                          <span>Produtos:</span>
+                          <span className="font-mono font-medium">
+                            {formatCurrencyBRL(produtosTotal)}
+                          </span>
+                        </div>
+
+                        {hasTaxBreakdown ? (
+                          <>
+                            <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                              <span>ICMS:</span>
+                              <span className="font-mono">{formatCurrencyBRL(icmsVal)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                              <span>IPI:</span>
+                              <span className="font-mono">{formatCurrencyBRL(ipiVal)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                              <span>PIS:</span>
+                              <span className="font-mono">{formatCurrencyBRL(pisVal)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                              <span>COFINS:</span>
+                              <span className="font-mono">{formatCurrencyBRL(cofinsVal)}</span>
+                            </div>
+                          </>
+                        ) : null}
+
+                        {quote.discount_percent > 0 && (
+                          <div className="flex justify-between items-center text-emerald-700 text-[11px]">
+                            <span>Desconto ({quote.discount_percent}%):</span>
+                            <span className="font-mono">
+                              - {formatCurrencyBRL((produtosTotal * quote.discount_percent) / 100)}
+                            </span>
+                          </div>
                         )}
-                      </React.Fragment>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
 
-            {/* Observações da Proposta + Bloco de Totais à direita */}
-            <div className="pt-4 border-t border-slate-300 grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-              {/* Observações da Proposta (Lado Esquerdo - 7 colunas) */}
-              <div className="md:col-span-7 space-y-2 text-xs">
-                <div className="font-bold text-slate-900 uppercase tracking-wide text-[11px]">
-                  Observações da Proposta
-                </div>
-
-                <div className="text-[11px] text-slate-600 leading-relaxed space-y-1.5 whitespace-pre-line">
-                  {quote.observations ? (
-                    <p>{quote.observations}</p>
-                  ) : (
-                    <>
-                      <p>
-                        <strong>Prazo de entrega:</strong> {deliveryTerm}
-                      </p>
-                      <p>
-                        <strong>Pagamento:</strong> {paymentTerms}
-                      </p>
-                      <p>
-                        Este orçamento contempla exclusivamente os itens, quantidades, materiais,
-                        acabamentos e especificações técnicas descritos na proposta.
-                      </p>
-                      <p>
-                        Itens, serviços ou soluções não mencionados expressamente estão fora do
-                        escopo e serão cotados separadamente, caso solicitados.
-                      </p>
-                      <p>
-                        Alterações ou inclusões após a aprovação poderão acarretar revisão de
-                        valores, prazos e condições comerciais.
-                      </p>
-                      <p>
-                        Componentes elétricos, quando aplicáveis, serão fornecidos prontos para
-                        conexão, cabendo ao cliente a disponibilização do ponto de alimentação
-                        conforme especificação técnica.
-                      </p>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Bloco de Totais (Lado Direito - 5 colunas) */}
-              <div className="md:col-span-5 bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-1.5 text-xs">
-                <div className="flex justify-between items-center text-slate-700">
-                  <span>Produtos:</span>
-                  <span className="font-mono font-medium">{formatCurrencyBRL(produtosTotal)}</span>
-                </div>
-
-                {hasTaxBreakdown ? (
-                  <>
-                    <div className="flex justify-between items-center text-slate-600 text-[11px]">
-                      <span>ICMS:</span>
-                      <span className="font-mono">{formatCurrencyBRL(icmsVal)}</span>
+                        <div className="pt-2 border-t-2 border-slate-900 flex justify-between items-center">
+                          <span className="font-extrabold text-slate-900 text-sm uppercase">
+                            Total:
+                          </span>
+                          <span className="font-mono text-lg font-black text-slate-950">
+                            {formatCurrencyBRL(quote.total)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center text-slate-600 text-[11px]">
-                      <span>IPI:</span>
-                      <span className="font-mono">{formatCurrencyBRL(ipiVal)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-slate-600 text-[11px]">
-                      <span>PIS:</span>
-                      <span className="font-mono">{formatCurrencyBRL(pisVal)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-slate-600 text-[11px]">
-                      <span>COFINS:</span>
-                      <span className="font-mono">{formatCurrencyBRL(cofinsVal)}</span>
-                    </div>
-                  </>
-                ) : null}
+                  </LayoutBlockWrapper>
+                )
+              }
 
-                {quote.discount_percent > 0 && (
-                  <div className="flex justify-between items-center text-emerald-700 text-[11px]">
-                    <span>Desconto ({quote.discount_percent}%):</span>
-                    <span className="font-mono">
-                      - {formatCurrencyBRL((produtosTotal * quote.discount_percent) / 100)}
-                    </span>
-                  </div>
-                )}
-
-                <div className="pt-2 border-t-2 border-slate-900 flex justify-between items-center">
-                  <span className="font-extrabold text-slate-900 text-sm uppercase">Total:</span>
-                  <span className="font-mono text-lg font-black text-slate-950">
-                    {formatCurrencyBRL(quote.total)}
-                  </span>
-                </div>
-              </div>
-            </div>
+              return null
+            })}
           </section>
 
           {/* =========================================================
@@ -523,100 +767,161 @@ export default function QuoteDetail() {
               ========================================================= */}
           <div className="print-page-break border-t-2 border-dashed border-slate-300 print:border-none" />
 
-          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-xs leading-normal">
-            {/* Header da Página 2 / Resumo Comercial Superior */}
-            <div className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-300 text-xs">
-              <div className="space-y-1">
-                <div>
-                  <span className="font-bold text-slate-900">Vendedor: </span>
-                  <span className="text-slate-700">{sellerName}</span>
-                </div>
-                <div>
-                  <span className="font-bold text-slate-900">Prazo de Entrega: </span>
-                  <span className="text-slate-700">{deliveryTerm}</span>
-                </div>
-              </div>
+          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-xs leading-normal space-y-4">
+            {layoutConfig.page2Order.map((blockId) => {
+              if (blockId === 'conditions_summary') {
+                return (
+                  <LayoutBlockWrapper
+                    key={blockId}
+                    id={blockId}
+                    isEditMode={isLayoutEditMode}
+                    isSelected={selectedBlockId === blockId}
+                    styleConfig={layoutConfig.blocks[blockId]}
+                    onSelect={setSelectedBlockId}
+                    onUpdateStyle={handleUpdateBlockStyle}
+                    onMoveOrder={handleMoveBlockOrder}
+                  >
+                    <div className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-300 text-xs">
+                      <div className="space-y-1">
+                        <div>
+                          <span className="font-bold text-slate-900">Vendedor: </span>
+                          <span className="text-slate-700">{sellerName}</span>
+                        </div>
+                        <div>
+                          <span className="font-bold text-slate-900">Prazo de Entrega: </span>
+                          <span className="text-slate-700">{deliveryTerm}</span>
+                        </div>
+                      </div>
 
-              <div className="space-y-1 text-right">
-                <div>
-                  <span className="font-bold text-slate-900">Validade da Proposta: </span>
-                  <span className="text-slate-700">{validityDays} dias.</span>
-                </div>
-                <div>
-                  <span className="font-bold text-slate-900">Cond. pagamento: </span>
-                  <span className="text-slate-700">{paymentTerms}</span>
-                </div>
-              </div>
-            </div>
+                      <div className="space-y-1 text-right">
+                        <div>
+                          <span className="font-bold text-slate-900">Validade da Proposta: </span>
+                          <span className="text-slate-700">{validityDays} dias.</span>
+                        </div>
+                        <div>
+                          <span className="font-bold text-slate-900">Cond. pagamento: </span>
+                          <span className="text-slate-700">{paymentTerms}</span>
+                        </div>
+                      </div>
+                    </div>
 
-            {/* Texto de validade & cortesia */}
-            <div className="py-4 space-y-1 text-xs text-slate-700">
-              <p>A validade desta proposta é de {validityDays} dias.</p>
-              <p>Ficamos à disposição para quaisquer esclarecimentos adicionais.</p>
-            </div>
+                    <div className="py-3 space-y-1 text-xs text-slate-700">
+                      <p>A validade desta proposta é de {validityDays} dias.</p>
+                      <p>Ficamos à disposição para quaisquer esclarecimentos adicionais.</p>
+                    </div>
+                  </LayoutBlockWrapper>
+                )
+              }
 
-            {/* Tabela de Parcelas */}
-            <div className="mt-4 mb-8">
-              <div className="font-bold text-slate-900 uppercase tracking-wide text-[11px] mb-2">
-                Programação de Parcelas / Pagamento
-              </div>
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-t border-b border-slate-300 bg-slate-50/70 font-bold text-slate-900">
-                    <th className="py-2 px-3 w-20">Parcela</th>
-                    <th className="py-2 px-3">Data</th>
-                    <th className="py-2 px-3">Forma de Pagamento</th>
-                    <th className="py-2 px-3 text-right">Valor</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {installments.map((inst, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="py-2 px-3 font-semibold text-slate-800">{inst.number}</td>
-                      <td className="py-2 px-3 text-slate-700 font-mono">
-                        {formatDateBR(inst.date)}
-                      </td>
-                      <td className="py-2 px-3 text-slate-700">{inst.method}</td>
-                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
-                        {formatCurrencyBRL(inst.value)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              if (blockId === 'installments') {
+                return (
+                  <LayoutBlockWrapper
+                    key={blockId}
+                    id={blockId}
+                    isEditMode={isLayoutEditMode}
+                    isSelected={selectedBlockId === blockId}
+                    styleConfig={layoutConfig.blocks[blockId]}
+                    onSelect={setSelectedBlockId}
+                    onUpdateStyle={handleUpdateBlockStyle}
+                    onMoveOrder={handleMoveBlockOrder}
+                  >
+                    <div className="my-3">
+                      <div className="font-bold text-slate-900 uppercase tracking-wide text-[11px] mb-2">
+                        Programação de Parcelas / Pagamento
+                      </div>
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-t border-b border-slate-300 bg-slate-50/70 font-bold text-slate-900">
+                            <th className="py-2 px-3 w-20">Parcela</th>
+                            <th className="py-2 px-3">Data</th>
+                            <th className="py-2 px-3">Forma de Pagamento</th>
+                            <th className="py-2 px-3 text-right">Valor</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {installments.map((inst, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/50">
+                              <td className="py-2 px-3 font-semibold text-slate-800">
+                                {inst.number}
+                              </td>
+                              <td className="py-2 px-3 text-slate-700 font-mono">
+                                {formatDateBR(inst.date)}
+                              </td>
+                              <td className="py-2 px-3 text-slate-700">{inst.method}</td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                                {formatCurrencyBRL(inst.value)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </LayoutBlockWrapper>
+                )
+              }
 
-            {/* Área de Assinatura com três campos: Nome Legível, Assinatura, Data */}
-            <div className="pt-12 mt-12 border-t border-slate-300 print-avoid-break">
-              <div className="max-w-md mx-auto space-y-8 text-center text-xs text-slate-700">
-                <div className="space-y-1">
-                  <div className="border-b border-slate-900 w-full h-8" />
-                  <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
-                    Nome Legível
-                  </div>
-                </div>
+              if (blockId === 'signature') {
+                return (
+                  <LayoutBlockWrapper
+                    key={blockId}
+                    id={blockId}
+                    isEditMode={isLayoutEditMode}
+                    isSelected={selectedBlockId === blockId}
+                    styleConfig={layoutConfig.blocks[blockId]}
+                    onSelect={setSelectedBlockId}
+                    onUpdateStyle={handleUpdateBlockStyle}
+                    onMoveOrder={handleMoveBlockOrder}
+                  >
+                    <div className="pt-10 mt-6 border-t border-slate-300 print-avoid-break">
+                      <div className="max-w-md mx-auto space-y-8 text-center text-xs text-slate-700">
+                        <div className="space-y-1">
+                          <div className="border-b border-slate-900 w-full h-8" />
+                          <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
+                            Nome Legível
+                          </div>
+                        </div>
 
-                <div className="space-y-1">
-                  <div className="border-b border-slate-900 w-full h-8" />
-                  <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
-                    Assinatura
-                  </div>
-                </div>
+                        <div className="space-y-1">
+                          <div className="border-b border-slate-900 w-full h-8" />
+                          <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
+                            Assinatura
+                          </div>
+                        </div>
 
-                <div className="space-y-1">
-                  <div className="border-b border-slate-900 w-full h-8" />
-                  <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
-                    Data
-                  </div>
-                </div>
-              </div>
-            </div>
+                        <div className="space-y-1">
+                          <div className="border-b border-slate-900 w-full h-8" />
+                          <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
+                            Data
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </LayoutBlockWrapper>
+                )
+              }
 
-            {/* Rodapé da Proposta */}
-            <div className="pt-10 text-center text-[11px] text-slate-400">
-              {CORTEPLAN_COMPANY_INFO.name} &bull; CNPJ: {CORTEPLAN_COMPANY_INFO.cnpj} &bull;{' '}
-              {CORTEPLAN_COMPANY_INFO.phone} &bull; {CORTEPLAN_COMPANY_INFO.email}
-            </div>
+              if (blockId === 'footer') {
+                return (
+                  <LayoutBlockWrapper
+                    key={blockId}
+                    id={blockId}
+                    isEditMode={isLayoutEditMode}
+                    isSelected={selectedBlockId === blockId}
+                    styleConfig={layoutConfig.blocks[blockId]}
+                    onSelect={setSelectedBlockId}
+                    onUpdateStyle={handleUpdateBlockStyle}
+                    onMoveOrder={handleMoveBlockOrder}
+                  >
+                    <div className="pt-8 text-center text-[11px] text-slate-400">
+                      {CORTEPLAN_COMPANY_INFO.name} &bull; CNPJ: {CORTEPLAN_COMPANY_INFO.cnpj}{' '}
+                      &bull; {CORTEPLAN_COMPANY_INFO.phone} &bull; {CORTEPLAN_COMPANY_INFO.email}
+                    </div>
+                  </LayoutBlockWrapper>
+                )
+              }
+
+              return null
+            })}
           </section>
         </div>
       </div>

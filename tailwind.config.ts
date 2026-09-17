@@ -74,6 +74,16 @@ export default {
           border: 'hsl(var(--sidebar-border))',
           ring: 'hsl(var(--sidebar-ring))',
         },
+        graphite: {
+          DEFAULT: '#3A3A3C',
+          hover: '#2D2D2F',
+          light: '#4E4E50',
+          dark: '#262628',
+        },
+        corteplan: {
+          orange: '#F08A24',
+          graphite: '#3A3A3C',
+        },
         chart: {
           1: 'hsl(var(--chart-1))',
           2: 'hsl(var(--chart-2))',

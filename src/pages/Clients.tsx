@@ -197,7 +197,7 @@ export default function Clients() {
               setClientToEdit(null)
               setIsModalOpen(true)
             }}
-            className="rounded-xl bg-[#1E3A5F] hover:bg-[#2A4E7A] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02] shrink-0"
+            className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02] shrink-0"
           >
             <Plus className="h-4 w-4 mr-1.5 text-amber-400" />
             Novo Cliente
@@ -209,7 +209,7 @@ export default function Clients() {
       {loading ? (
         <div className="flex h-64 items-center justify-center">
           <div className="flex flex-col items-center gap-3 text-slate-500">
-            <Loader2 className="h-8 w-8 animate-spin text-[#1E3A5F]" />
+            <Loader2 className="h-8 w-8 animate-spin text-[#3A3A3C]" />
             <p className="text-sm">Carregando carteira de clientes...</p>
           </div>
         </div>
@@ -234,7 +234,7 @@ export default function Clients() {
                 setClientToEdit(null)
                 setIsModalOpen(true)
               }}
-              className="rounded-xl bg-[#1E3A5F] hover:bg-[#2A4E7A] text-white font-medium"
+              className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium"
             >
               <Plus className="h-4 w-4 mr-1.5 text-amber-400" />
               Cadastrar primeiro cliente
@@ -279,7 +279,7 @@ export default function Clients() {
                           <div className="min-w-0 truncate">
                             <Link
                               to={`/clientes/${client.id}`}
-                              className="font-semibold text-slate-900 group-hover:text-[#1E3A5F] hover:underline block truncate"
+                              className="font-semibold text-slate-900 group-hover:text-[#3A3A3C] hover:underline block truncate"
                             >
                               {highlightMatch(client.name, search)}
                             </Link>

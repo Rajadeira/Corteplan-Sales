@@ -61,10 +61,44 @@ export interface QuoteRecord extends RecordModel {
   payment_terms?: string
   installments?: QuoteInstallment[]
 
+  // Configuração de Diagramação / Ajuste Manual de Layout (estilo CorelDRAW)
+  layout_config?: ProposalLayoutConfig
+
   expand?: {
     client?: ClientRecord
     [key: string]: unknown
   }
+}
+
+export type ProposalBlockId =
+  | 'header'
+  | 'client'
+  | 'title_date'
+  | 'intro'
+  | 'items'
+  | 'totals_obs'
+  | 'conditions_summary'
+  | 'installments'
+  | 'signature'
+  | 'footer'
+
+export interface BlockStyleConfig {
+  xOffset?: number // px
+  yOffset?: number // px
+  scale?: number // percent (ex: 100)
+  widthPercent?: number // percent (ex: 100)
+  marginTop?: number // px
+  marginBottom?: number // px
+  padding?: number // px
+  align?: 'left' | 'center' | 'right'
+}
+
+export interface ProposalLayoutConfig {
+  version: number
+  page1Order: ProposalBlockId[]
+  page2Order: ProposalBlockId[]
+  blocks: Partial<Record<ProposalBlockId, BlockStyleConfig>>
+  updatedAt?: string
 }
 
 export const CORTEPLAN_COMPANY_INFO = {
@@ -76,6 +110,17 @@ export const CORTEPLAN_COMPANY_INFO = {
   city: 'Mauá',
   state: 'SP',
 }
+
+/**
+ * Regra pré-estipulada padrão de alíquotas de impostos da CORTEPLAN:
+ * "Icms 12%, IPI 3,25% - Pis 0,65% e Cofins 3%"
+ */
+export const DEFAULT_TAX_RATES = {
+  icmsPercent: 12, // 12%
+  ipiPercent: 3.25, // 3,25%
+  pisPercent: 0.65, // 0,65%
+  cofinsPercent: 3, // 3%
+} as const
 
 export function formatCurrencyBRL(value: number): string {
   return new Intl.NumberFormat('pt-BR', {

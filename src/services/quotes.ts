@@ -22,6 +22,7 @@ export interface CreateQuoteData {
   delivery_term?: string
   payment_terms?: string
   installments?: import('@/types').QuoteInstallment[]
+  layout_config?: import('@/types').ProposalLayoutConfig
 }
 
 export type UpdateQuoteData = Partial<CreateQuoteData>

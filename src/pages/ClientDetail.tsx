@@ -95,7 +95,7 @@ export default function ClientDetail() {
     return (
       <div className="flex h-96 items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-slate-500">
-          <Loader2 className="h-8 w-8 animate-spin text-[#1E3A5F]" />
+          <Loader2 className="h-8 w-8 animate-spin text-[#3A3A3C]" />
           <p className="text-sm">Carregando detalhes do cliente...</p>
         </div>
       </div>
@@ -133,8 +133,8 @@ export default function ClientDetail() {
       {/* Header com Avatar Grande e Informações Principais */}
       <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
-          <Avatar className="h-20 w-20 ring-4 ring-slate-100 bg-[#1E3A5F] text-amber-400 font-bold text-2xl shadow-sm">
-            <AvatarFallback className="bg-[#1E3A5F] text-amber-400 font-bold text-2xl">
+          <Avatar className="h-20 w-20 ring-4 ring-slate-100 bg-[#3A3A3C] text-[#F08A24] font-bold text-2xl shadow-sm">
+            <AvatarFallback className="bg-[#3A3A3C] text-[#F08A24] font-bold text-2xl">
               {getInitials(client.name)}
             </AvatarFallback>
           </Avatar>
@@ -184,7 +184,7 @@ export default function ClientDetail() {
 
           <Button
             onClick={() => navigate('/orcamentos/novo', { state: { clientId: client.id } })}
-            className="rounded-xl bg-[#1E3A5F] hover:bg-[#2A4E7A] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
+            className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
           >
             <PlusCircle className="h-4 w-4 mr-1.5 text-amber-400" />
             Novo Orçamento para este Cliente
@@ -258,7 +258,7 @@ export default function ClientDetail() {
               </p>
               <Button
                 onClick={() => navigate('/orcamentos/novo', { state: { clientId: client.id } })}
-                className="rounded-xl bg-[#1E3A5F] text-white text-xs h-9"
+                className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white text-xs h-9"
               >
                 Criar primeiro orçamento
               </Button>
@@ -273,7 +273,7 @@ export default function ClientDetail() {
                 >
                   <div className="space-y-1 min-w-0 pr-4">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-sm text-[#1E3A5F] group-hover:text-blue-700">
+                      <span className="font-mono font-bold text-sm text-[#3A3A3C] group-hover:text-[#F08A24]">
                         {formatQuoteNumber(q.quote_number)}
                       </span>
                       {getStatusBadge(q.status)}

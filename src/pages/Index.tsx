@@ -162,7 +162,7 @@ export default function Index() {
     return (
       <div className="flex h-96 items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-slate-500">
-          <Loader2 className="h-8 w-8 animate-spin text-[#1E3A5F]" />
+          <Loader2 className="h-8 w-8 animate-spin text-[#3A3A3C]" />
           <p className="text-sm">Carregando painel analítico...</p>
         </div>
       </div>
@@ -196,7 +196,7 @@ export default function Index() {
 
           <Button
             asChild
-            className="rounded-xl bg-[#1E3A5F] hover:bg-[#2A4E7A] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
+            className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
           >
             <Link to="/orcamentos/novo">
               <Plus className="h-4 w-4 mr-2 text-amber-400" />
@@ -301,7 +301,7 @@ export default function Index() {
             </div>
             <div className="flex items-center gap-3 text-xs font-medium text-slate-500">
               <span className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded-xs bg-[#1E3A5F]" /> Histórico
+                <span className="h-3 w-3 rounded-xs bg-[#3A3A3C]" /> Histórico
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="h-3 w-3 rounded-xs bg-[#F59E0B]" /> Mês Atual
@@ -352,7 +352,7 @@ export default function Index() {
                   {monthlyData.map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}
-                      fill={entry.isCurrentMonth ? '#F59E0B' : '#1E3A5F'}
+                      fill={entry.isCurrentMonth ? '#F08A24' : '#3A3A3C'}
                     />
                   ))}
                 </Bar>
@@ -369,7 +369,7 @@ export default function Index() {
               <h3 className="text-base font-bold text-slate-900">Orçamentos Recentes</h3>
               <Link
                 to="/orcamentos"
-                className="text-xs font-semibold text-[#1E3A5F] hover:text-[#2A4E7A] flex items-center gap-1 hover:underline"
+                className="text-xs font-semibold text-[#3A3A3C] hover:text-[#F08A24] flex items-center gap-1 hover:underline"
               >
                 Ver todos
                 <ArrowRight className="h-3 w-3" />
@@ -390,7 +390,7 @@ export default function Index() {
                   >
                     <div className="truncate pr-3">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-xs text-[#1E3A5F] group-hover:text-blue-700">
+                        <span className="font-mono font-bold text-xs text-[#3A3A3C] group-hover:text-[#F08A24]">
                           {formatQuoteNumber(quote.quote_number)}
                         </span>
                         {getStatusBadge(quote.status)}
@@ -417,7 +417,7 @@ export default function Index() {
               <h3 className="text-base font-bold text-slate-900">Clientes Recentes</h3>
               <Link
                 to="/clientes"
-                className="text-xs font-semibold text-[#1E3A5F] hover:text-[#2A4E7A] flex items-center gap-1 hover:underline"
+                className="text-xs font-semibold text-[#3A3A3C] hover:text-[#F08A24] flex items-center gap-1 hover:underline"
               >
                 Ver todos
                 <ArrowRight className="h-3 w-3" />
@@ -438,12 +438,12 @@ export default function Index() {
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <Avatar className="h-8 w-8 ring-1 ring-slate-200 shrink-0">
-                        <AvatarFallback className="bg-blue-50 text-[#1E3A5F] font-bold text-xs">
+                        <AvatarFallback className="bg-slate-100 text-[#3A3A3C] font-bold text-xs">
                           {getInitials(c.name)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 truncate">
-                        <p className="text-xs font-semibold text-slate-900 group-hover:text-[#1E3A5F] truncate">
+                        <p className="text-xs font-semibold text-slate-900 group-hover:text-[#3A3A3C] truncate">
                           {c.name}
                         </p>
                         <p className="text-[11px] text-slate-500 truncate">

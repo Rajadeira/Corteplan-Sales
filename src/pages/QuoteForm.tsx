@@ -20,7 +20,7 @@ import { quoteService } from '@/services/quotes'
 import { clientService } from '@/services/clients'
 import { useAuth } from '@/contexts/AuthContext'
 import type { ClientRecord, QuoteItem, QuoteRecord, QuoteInstallment } from '@/types'
-import { formatCurrencyBRL, formatQuoteNumber, maskPhoneBR } from '@/types'
+import { formatCurrencyBRL, formatQuoteNumber, maskPhoneBR, DEFAULT_TAX_RATES } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -78,11 +78,19 @@ export default function QuoteForm() {
   const [deliveryTerm, setDeliveryTerm] = useState<string>('À Combinar')
   const [paymentTerms, setPaymentTerms] = useState<string>('Entrada 50% + 2x')
 
-  // Impostos
+  // Impostos: alíquotas (%) e valores (R$)
+  // Regra padrão da CORTEPLAN: ICMS 12%, IPI 3,25%, PIS 0,65% e COFINS 3%
+  const [icmsPercent, setIcmsPercent] = useState<number>(DEFAULT_TAX_RATES.icmsPercent)
+  const [ipiPercent, setIpiPercent] = useState<number>(DEFAULT_TAX_RATES.ipiPercent)
+  const [pisPercent, setPisPercent] = useState<number>(DEFAULT_TAX_RATES.pisPercent)
+  const [cofinsPercent, setCofinsPercent] = useState<number>(DEFAULT_TAX_RATES.cofinsPercent)
+
+  // Valores em R$ (editáveis diretamente ou calculados automaticamente)
   const [icms, setIcms] = useState<number>(0)
   const [ipi, setIpi] = useState<number>(0)
   const [pis, setPis] = useState<number>(0)
   const [cofins, setCofins] = useState<number>(0)
+  const [taxMode, setTaxMode] = useState<'percent' | 'manual'>('percent')
 
   // Parcelas
   const [installments, setInstallments] = useState<QuoteInstallment[]>([
@@ -143,6 +151,15 @@ export default function QuoteForm() {
           setPis(q.pis || 0)
           setCofins(q.cofins || 0)
 
+          // Se estiver editando um orçamento existente com valores salvos,
+          // calcula o percentual correspondente em relação ao subtotal se aplicável
+          if (q.subtotal && q.subtotal > 0) {
+            if (q.icms) setIcmsPercent(Math.round((q.icms / q.subtotal) * 10000) / 100)
+            if (q.ipi) setIpiPercent(Math.round((q.ipi / q.subtotal) * 10000) / 100)
+            if (q.pis) setPisPercent(Math.round((q.pis / q.subtotal) * 10000) / 100)
+            if (q.cofins) setCofinsPercent(Math.round((q.cofins / q.subtotal) * 10000) / 100)
+          }
+
           if (q.installments && q.installments.length > 0) {
             setInstallments(q.installments)
           } else {
@@ -197,6 +214,22 @@ export default function QuoteForm() {
     const price = Number(item.unit_price) || 0
     return sum + qty * price
   }, 0)
+
+  // Quando o subtotal ou os percentuais mudam e estamos em modo 'percent',
+  // recalcula os valores de impostos automaticamente com base na regra pré-estipulada
+  useEffect(() => {
+    if (taxMode === 'percent') {
+      const calcIcms = Math.round(((subtotal * (Number(icmsPercent) || 0)) / 100) * 100) / 100
+      const calcIpi = Math.round(((subtotal * (Number(ipiPercent) || 0)) / 100) * 100) / 100
+      const calcPis = Math.round(((subtotal * (Number(pisPercent) || 0)) / 100) * 100) / 100
+      const calcCofins = Math.round(((subtotal * (Number(cofinsPercent) || 0)) / 100) * 100) / 100
+
+      setIcms(calcIcms)
+      setIpi(calcIpi)
+      setPis(calcPis)
+      setCofins(calcCofins)
+    }
+  }, [subtotal, icmsPercent, ipiPercent, pisPercent, cofinsPercent, taxMode])
 
   const discountAmount = (subtotal * (Number(discountPercent) || 0)) / 100
   const taxesTotal =
@@ -428,7 +461,7 @@ export default function QuoteForm() {
     return (
       <div className="flex h-96 items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-slate-500">
-          <Loader2 className="h-8 w-8 animate-spin text-[#1E3A5F]" />
+          <Loader2 className="h-8 w-8 animate-spin text-[#3A3A3C]" />
           <p className="text-sm">Carregando formulário de proposta...</p>
         </div>
       </div>
@@ -466,7 +499,7 @@ export default function QuoteForm() {
             <span className="text-[11px] font-semibold text-slate-400 block uppercase">
               Número da Proposta
             </span>
-            <span className="font-mono text-2xl font-extrabold text-[#1E3A5F]">
+            <span className="font-mono text-2xl font-extrabold text-[#3A3A3C]">
               {formattedNumber}
             </span>
           </div>
@@ -530,7 +563,9 @@ export default function QuoteForm() {
                           setClientDropdownOpen(false)
                         }}
                         className={`w-full flex items-center justify-between p-2.5 rounded-lg text-left transition-colors hover:bg-slate-100 ${
-                          c.id === selectedClientId ? 'bg-blue-50 font-semibold text-[#1E3A5F]' : ''
+                          c.id === selectedClientId
+                            ? 'bg-slate-100 font-semibold text-[#3A3A3C]'
+                            : ''
                         }`}
                       >
                         <div className="truncate pr-2">
@@ -541,7 +576,7 @@ export default function QuoteForm() {
                           </div>
                         </div>
                         {c.id === selectedClientId && (
-                          <CheckCircle className="h-4 w-4 text-[#1E3A5F] shrink-0" />
+                          <CheckCircle className="h-4 w-4 text-[#3A3A3C] shrink-0" />
                         )}
                       </button>
                     ))
@@ -752,77 +787,205 @@ export default function QuoteForm() {
             <button
               type="button"
               onClick={handleAddItem}
-              className="w-full py-3 border-2 border-dashed border-slate-200 hover:border-[#1E3A5F] hover:bg-blue-50/40 rounded-xl text-xs font-semibold text-slate-600 hover:text-[#1E3A5F] flex items-center justify-center gap-2 transition-all"
+              className="w-full py-3 border-2 border-dashed border-slate-200 hover:border-[#3A3A3C] hover:bg-slate-50 rounded-xl text-xs font-semibold text-slate-600 hover:text-[#3A3A3C] flex items-center justify-center gap-2 transition-all"
             >
               <Plus className="h-4 w-4 text-amber-500" />
               Adicionar Novo Item
             </button>
           </div>
 
-          {/* Seção 3: Detalhamento de Impostos (ICMS, IPI, PIS, COFINS) */}
+          {/* Seção 3: Detalhamento de Impostos (ICMS 12%, IPI 3,25%, PIS 0,65%, COFINS 3%) */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                3. Impostos Totais da Proposta (R$)
-              </h2>
-              <p className="text-xs text-slate-500">
-                Preencha os impostos que serão discriminados no bloco de totais da proposta
-                impressa.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                  3. Regra de Impostos (ICMS 12%, IPI 3,25%, PIS 0,65%, COFINS 3%)
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Valores calculados automaticamente sobre o subtotal de produtos (editáveis por
+                  proposta).
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIcmsPercent(DEFAULT_TAX_RATES.icmsPercent)
+                    setIpiPercent(DEFAULT_TAX_RATES.ipiPercent)
+                    setPisPercent(DEFAULT_TAX_RATES.pisPercent)
+                    setCofinsPercent(DEFAULT_TAX_RATES.cofinsPercent)
+                    setTaxMode('percent')
+                    toast.success('Alíquotas padrão Corteplan restauradas!')
+                  }}
+                  className="text-xs h-7 rounded-lg text-slate-600 hover:text-slate-900"
+                >
+                  Restaurar Padrão Corteplan
+                </Button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-slate-700">ICMS (R$)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0,00"
-                  value={icms || ''}
-                  onChange={(e) => setIcms(parseFloat(e.target.value) || 0)}
-                  className="bg-white text-xs font-mono"
-                />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* ICMS (12%) */}
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-900">ICMS</Label>
+                  <span className="text-[11px] text-slate-500 font-medium">Padrão: 12%</span>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={icmsPercent}
+                      onChange={(e) => {
+                        setTaxMode('percent')
+                        setIcmsPercent(parseFloat(e.target.value) || 0)
+                      }}
+                      className="bg-white text-xs font-mono h-8"
+                    />
+                    <span className="text-xs font-bold text-slate-600">%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60">
+                    <span className="text-slate-500 text-[11px]">Valor (R$):</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={icms || ''}
+                      onChange={(e) => {
+                        setTaxMode('manual')
+                        setIcms(parseFloat(e.target.value) || 0)
+                      }}
+                      className="bg-white text-xs font-mono font-bold text-slate-900 h-8 w-28 text-right"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-slate-700">IPI (R$)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0,00"
-                  value={ipi || ''}
-                  onChange={(e) => setIpi(parseFloat(e.target.value) || 0)}
-                  className="bg-white text-xs font-mono"
-                />
+              {/* IPI (3,25%) */}
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-900">IPI</Label>
+                  <span className="text-[11px] text-slate-500 font-medium">Padrão: 3,25%</span>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={ipiPercent}
+                      onChange={(e) => {
+                        setTaxMode('percent')
+                        setIpiPercent(parseFloat(e.target.value) || 0)
+                      }}
+                      className="bg-white text-xs font-mono h-8"
+                    />
+                    <span className="text-xs font-bold text-slate-600">%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60">
+                    <span className="text-slate-500 text-[11px]">Valor (R$):</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={ipi || ''}
+                      onChange={(e) => {
+                        setTaxMode('manual')
+                        setIpi(parseFloat(e.target.value) || 0)
+                      }}
+                      className="bg-white text-xs font-mono font-bold text-slate-900 h-8 w-28 text-right"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-slate-700">PIS (R$)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0,00"
-                  value={pis || ''}
-                  onChange={(e) => setPis(parseFloat(e.target.value) || 0)}
-                  className="bg-white text-xs font-mono"
-                />
+              {/* PIS (0,65%) */}
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-900">PIS</Label>
+                  <span className="text-[11px] text-slate-500 font-medium">Padrão: 0,65%</span>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={pisPercent}
+                      onChange={(e) => {
+                        setTaxMode('percent')
+                        setPisPercent(parseFloat(e.target.value) || 0)
+                      }}
+                      className="bg-white text-xs font-mono h-8"
+                    />
+                    <span className="text-xs font-bold text-slate-600">%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60">
+                    <span className="text-slate-500 text-[11px]">Valor (R$):</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={pis || ''}
+                      onChange={(e) => {
+                        setTaxMode('manual')
+                        setPis(parseFloat(e.target.value) || 0)
+                      }}
+                      className="bg-white text-xs font-mono font-bold text-slate-900 h-8 w-28 text-right"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-slate-700">COFINS (R$)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0,00"
-                  value={cofins || ''}
-                  onChange={(e) => setCofins(parseFloat(e.target.value) || 0)}
-                  className="bg-white text-xs font-mono"
-                />
+              {/* COFINS (3%) */}
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-900">COFINS</Label>
+                  <span className="text-[11px] text-slate-500 font-medium">Padrão: 3%</span>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={cofinsPercent}
+                      onChange={(e) => {
+                        setTaxMode('percent')
+                        setCofinsPercent(parseFloat(e.target.value) || 0)
+                      }}
+                      className="bg-white text-xs font-mono h-8"
+                    />
+                    <span className="text-xs font-bold text-slate-600">%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60">
+                    <span className="text-slate-500 text-[11px]">Valor (R$):</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={cofins || ''}
+                      onChange={(e) => {
+                        setTaxMode('manual')
+                        setCofins(parseFloat(e.target.value) || 0)
+                      }}
+                      className="bg-white text-xs font-mono font-bold text-slate-900 h-8 w-28 text-right"
+                    />
+                  </div>
+                </div>
               </div>
+            </div>
+
+            <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1">
+              <span>Soma total dos impostos discriminados:</span>
+              <span className="font-mono font-bold text-slate-900">
+                {formatCurrencyBRL(taxesTotal)}
+              </span>
             </div>
           </div>
 
@@ -1095,7 +1258,7 @@ export default function QuoteForm() {
                   <span>Total da Proposta</span>
                   <span>BRL</span>
                 </div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-[#1E3A5F] font-mono tracking-tight transition-all duration-200">
+                <div className="text-2xl sm:text-3xl font-extrabold text-[#3A3A3C] font-mono tracking-tight transition-all duration-200">
                   {formatCurrencyBRL(total)}
                 </div>
               </div>
@@ -1107,7 +1270,7 @@ export default function QuoteForm() {
                 type="button"
                 onClick={() => handleSave('Enviado')}
                 disabled={saving}
-                className="w-full h-11 bg-[#1E3A5F] hover:bg-[#2A4E7A] text-white font-semibold text-xs sm:text-sm rounded-xl shadow-sm transition-all duration-200 hover:scale-[1.02]"
+                className="w-full h-11 bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-semibold text-xs sm:text-sm rounded-xl shadow-sm transition-all duration-200 hover:scale-[1.02]"
               >
                 {saving ? (
                   <>

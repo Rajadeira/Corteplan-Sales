@@ -62,14 +62,14 @@ export default function Login() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">
       {/* Coluna Esquerda: Visual Escuro com Gradiente (Desktop) */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-[#0F172A] via-[#1E293B] to-[#1E3A5F] flex-col justify-between p-12 text-white overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-[#1C1C1E] via-[#2C2C2E] to-[#3A3A3C] flex-col justify-between p-12 text-white overflow-hidden">
         {/* Subtle geometric pattern / glow */}
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* Logo superior */}
         <div className="flex items-center gap-3 relative z-10">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#1E3A5F] to-blue-600 text-white shadow-lg shadow-black/40 border border-slate-700/50">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#3A3A3C] to-[#F08A24] text-white shadow-lg shadow-black/40 border border-slate-700/50">
             <Armchair className="h-6 w-6 text-amber-400" />
           </div>
           <div>
@@ -181,7 +181,7 @@ export default function Login() {
                       'Para redefinir sua senha, solicite ao administrador do sistema ou entre com o usuário padrão (Skip@Pass).',
                     )
                   }
-                  className="text-xs font-medium text-[#1E3A5F] hover:underline"
+                  className="text-xs font-medium text-[#3A3A3C] hover:underline"
                 >
                   Esqueceu sua senha?
                 </button>
@@ -223,7 +223,7 @@ export default function Login() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full h-11 bg-[#1E3A5F] hover:bg-[#2A4E7A] text-white font-semibold text-sm rounded-xl transition-all duration-200 shadow-md shadow-[#1E3A5F]/20 hover:scale-[1.01]"
+              className="w-full h-11 bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-semibold text-sm rounded-xl transition-all duration-200 shadow-md shadow-black/20 hover:scale-[1.01]"
             >
               {loading ? (
                 <>
@@ -255,7 +255,7 @@ export default function Login() {
               Não possui cadastro?{' '}
               <Link
                 to="/cadastro"
-                className="font-semibold text-[#1E3A5F] hover:text-[#2A4E7A] hover:underline"
+                className="font-semibold text-[#3A3A3C] hover:text-[#2D2D2F] hover:underline"
               >
                 Criar conta
               </Link>

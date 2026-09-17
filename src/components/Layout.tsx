@@ -214,13 +214,13 @@ export default function Layout() {
                     isActive &&
                     item.path === '/orcamentos' &&
                     !location.pathname.includes('/novo'))
-                    ? 'bg-[#1E3A5F] text-white shadow-sm shadow-[#1E3A5F]/40 border-l-4 border-amber-400 font-semibold'
+                    ? 'bg-[#3A3A3C] text-white shadow-sm shadow-black/30 border-l-4 border-[#F08A24] font-semibold'
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 } ${collapsed ? 'justify-center px-0' : ''}`}
               >
                 <Icon
                   className={`h-5 w-5 shrink-0 transition-transform duration-200 ${
-                    isActive ? 'text-amber-400' : 'text-slate-400'
+                    isActive ? 'text-[#F08A24]' : 'text-slate-400'
                   }`}
                 />
                 {!collapsed && <span>{item.name}</span>}
@@ -247,8 +247,8 @@ export default function Layout() {
             className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} gap-2`}
           >
             <div className="flex items-center gap-3 min-w-0">
-              <Avatar className="h-9 w-9 ring-2 ring-slate-700 bg-gradient-to-br from-[#1E3A5F] to-slate-800 text-white font-bold text-xs shrink-0">
-                <AvatarFallback className="bg-slate-800 text-amber-400 font-bold">
+              <Avatar className="h-9 w-9 ring-2 ring-slate-700 bg-gradient-to-br from-[#3A3A3C] to-slate-800 text-white font-bold text-xs shrink-0">
+                <AvatarFallback className="bg-slate-800 text-[#F08A24] font-bold">
                   {getInitials(user?.name)}
                 </AvatarFallback>
               </Avatar>
@@ -316,7 +316,7 @@ export default function Layout() {
                   onFocus={() => {
                     if (searchQuery.trim().length >= 2) setSearchOpen(true)
                   }}
-                  className="pl-9 pr-3 h-9 text-xs sm:text-sm bg-slate-50 border-slate-200 focus-visible:ring-1 focus-visible:ring-[#1E3A5F] rounded-lg"
+                  className="pl-9 pr-3 h-9 text-xs sm:text-sm bg-slate-50 border-slate-200 focus-visible:ring-1 focus-visible:ring-[#3A3A3C] rounded-lg"
                 />
               </div>
 
@@ -390,7 +390,7 @@ export default function Layout() {
                               >
                                 <div className="truncate pr-2">
                                   <div className="flex items-center gap-2">
-                                    <span className="font-mono font-semibold text-[#1E3A5F]">
+                                    <span className="font-mono font-semibold text-[#3A3A3C]">
                                       {formatQuoteNumber(q.quote_number)}
                                     </span>
                                     <Badge
@@ -422,10 +422,10 @@ export default function Layout() {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="relative h-9 w-9 rounded-full p-0 ring-1 ring-slate-200 hover:ring-[#1E3A5F] transition-all"
+                  className="relative h-9 w-9 rounded-full p-0 ring-1 ring-slate-200 hover:ring-[#3A3A3C] transition-all"
                 >
                   <Avatar className="h-9 w-9">
-                    <AvatarFallback className="bg-[#1E3A5F] text-amber-400 font-bold text-xs">
+                    <AvatarFallback className="bg-[#3A3A3C] text-[#F08A24] font-bold text-xs">
                       {getInitials(user?.name)}
                     </AvatarFallback>
                   </Avatar>
@@ -454,9 +454,9 @@ export default function Layout() {
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => navigate('/orcamentos/novo')}
-                  className="cursor-pointer text-[#1E3A5F] font-medium"
+                  className="cursor-pointer text-[#3A3A3C] font-medium hover:text-[#F08A24]"
                 >
-                  <PlusCircle className="mr-2 h-4 w-4 text-amber-500" />
+                  <PlusCircle className="mr-2 h-4 w-4 text-[#F08A24]" />
                   <span>Criar Novo Orçamento</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

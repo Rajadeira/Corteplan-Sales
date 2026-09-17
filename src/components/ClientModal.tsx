@@ -267,7 +267,7 @@ export default function ClientModal({
             <Button
               type="submit"
               disabled={loading}
-              className="rounded-xl bg-[#1E3A5F] hover:bg-[#2A4E7A] text-white font-medium"
+              className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium"
             >
               {loading ? (
                 <>

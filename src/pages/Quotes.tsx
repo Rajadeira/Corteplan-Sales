@@ -168,7 +168,7 @@ export default function Quotes() {
 
         <Button
           asChild
-          className="rounded-xl bg-[#1E3A5F] hover:bg-[#2A4E7A] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02] shrink-0"
+          className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02] shrink-0"
         >
           <Link to="/orcamentos/novo">
             <Plus className="h-4 w-4 mr-1.5 text-amber-400" />
@@ -191,7 +191,7 @@ export default function Quotes() {
                 onClick={() => setStatusFilter(pill.key)}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 ${
                   isSelected
-                    ? 'bg-[#1E3A5F] text-white shadow-xs'
+                    ? 'bg-[#3A3A3C] text-white shadow-xs'
                     : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
                 }`}
               >
@@ -227,7 +227,7 @@ export default function Quotes() {
       {loading ? (
         <div className="flex h-64 items-center justify-center">
           <div className="flex flex-col items-center gap-3 text-slate-500">
-            <Loader2 className="h-8 w-8 animate-spin text-[#1E3A5F]" />
+            <Loader2 className="h-8 w-8 animate-spin text-[#3A3A3C]" />
             <p className="text-sm">Carregando histórico de orçamentos...</p>
           </div>
         </div>
@@ -251,7 +251,7 @@ export default function Quotes() {
           {!(search.trim() || statusFilter !== 'Todos') && (
             <Button
               asChild
-              className="rounded-xl bg-[#1E3A5F] hover:bg-[#2A4E7A] text-white font-medium"
+              className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium"
             >
               <Link to="/orcamentos/novo">
                 <Plus className="h-4 w-4 mr-1.5 text-amber-400" />
@@ -285,7 +285,7 @@ export default function Quotes() {
                     <td className="py-3.5 px-5">
                       <Link
                         to={`/orcamentos/${quote.id}`}
-                        className="inline-flex items-center gap-1.5 font-mono font-bold text-xs bg-slate-100 text-[#1E3A5F] px-2.5 py-1 rounded-lg border border-slate-200/80 group-hover:bg-[#1E3A5F] group-hover:text-white transition-colors"
+                        className="inline-flex items-center gap-1.5 font-mono font-bold text-xs bg-slate-100 text-[#3A3A3C] px-2.5 py-1 rounded-lg border border-slate-200/80 group-hover:bg-[#3A3A3C] group-hover:text-white transition-colors"
                       >
                         {formatQuoteNumber(quote.quote_number)}
                       </Link>
@@ -296,7 +296,7 @@ export default function Quotes() {
                       {quote.expand?.client ? (
                         <Link
                           to={`/clientes/${quote.expand.client.id}`}
-                          className="font-semibold text-slate-900 group-hover:text-[#1E3A5F] hover:underline block truncate max-w-xs"
+                          className="font-semibold text-slate-900 group-hover:text-[#3A3A3C] hover:underline block truncate max-w-xs"
                         >
                           {quote.expand.client.name}
                           {quote.expand.client.company && (
@@ -380,7 +380,7 @@ export default function Quotes() {
                 className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-mono font-bold text-xs bg-slate-100 text-[#1E3A5F] px-2.5 py-1 rounded-lg border border-slate-200">
+                  <span className="font-mono font-bold text-xs bg-slate-100 text-[#3A3A3C] px-2.5 py-1 rounded-lg border border-slate-200">
                     {formatQuoteNumber(quote.quote_number)}
                   </span>
                   {getStatusBadge(quote.status)}
