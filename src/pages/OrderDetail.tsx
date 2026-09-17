@@ -710,28 +710,36 @@ export default function OrderDetail() {
               }
 
               if (blockId === 'signature') {
+                const sellerDisplayName =
+                  order.seller || order.expand?.seller_user?.name || user?.name || ''
+                const orderDateFormatted = formatDateBR(order.created)
+
                 return (
                   <div
                     key={blockId}
-                    className="pt-10 mt-6 border-t border-slate-300 print-avoid-break"
+                    className="pt-8 mt-6 border-t border-slate-300 print-avoid-break"
                   >
-                    <div className="max-w-md mx-auto space-y-8 text-center text-xs text-slate-700">
+                    <div className="max-w-md mx-auto space-y-6 text-center text-xs text-slate-700">
                       <div className="space-y-1">
-                        <div className="border-b border-slate-900 w-full h-8" />
+                        <div className="border-b border-slate-900 w-full min-h-[2rem] pb-1 flex items-end justify-center font-medium text-slate-900">
+                          {sellerDisplayName}
+                        </div>
                         <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
                           Aprovação do Pedido / Nome Legível
                         </div>
                       </div>
 
                       <div className="space-y-1">
-                        <div className="border-b border-slate-900 w-full h-8" />
+                        <div className="border-b border-slate-900 w-full h-10" />
                         <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
                           Assinatura do Cliente
                         </div>
                       </div>
 
                       <div className="space-y-1">
-                        <div className="border-b border-slate-900 w-full h-8" />
+                        <div className="border-b border-slate-900 w-full min-h-[2rem] pb-1 flex items-end justify-center font-medium font-mono text-slate-900">
+                          {orderDateFormatted}
+                        </div>
                         <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
                           Data
                         </div>

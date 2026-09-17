@@ -44,6 +44,8 @@ export default function Items() {
   const { user } = useAuth()
   const { toast } = useToast()
   const isAdmin = user?.role === 'Administrador'
+  // Qualquer usuário autenticado (incluindo Vendedor) pode gerenciar itens
+  const canManageItems = Boolean(user)
 
   const [items, setItems] = useState<ItemCatalogRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -91,7 +93,7 @@ export default function Items() {
   }, [])
 
   const handleOpenCreate = () => {
-    if (!isAdmin) return
+    if (!canManageItems) return
     setEditingItem(null)
     setFormData({
       code: `ITM-${String(items.length + 1).padStart(3, '0')}`,
@@ -107,7 +109,7 @@ export default function Items() {
   }
 
   const handleOpenEdit = (item: ItemCatalogRecord) => {
-    if (!isAdmin) return
+    if (!canManageItems) return
     setEditingItem(item)
     setFormData({
       code: item.code || '',
@@ -124,7 +126,7 @@ export default function Items() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!isAdmin) return
+    if (!canManageItems) return
 
     if (!formData.description.trim()) {
       toast({
@@ -184,7 +186,7 @@ export default function Items() {
   }
 
   const handleDelete = async () => {
-    if (!isAdmin || !isDeleting) return
+    if (!canManageItems || !isDeleting) return
     try {
       await itemService.delete(isDeleting.id)
       toast({
@@ -220,25 +222,17 @@ export default function Items() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">Catálogo de Itens</h1>
-            <Badge
-              variant="outline"
-              className={
-                isAdmin
-                  ? 'border-emerald-500 text-emerald-700 bg-emerald-50'
-                  : 'border-blue-500 text-blue-700 bg-blue-50'
-              }
-            >
-              {isAdmin ? 'Acesso Total (Admin)' : 'Modo Consulta (Vendedor)'}
+            <Badge variant="outline" className="border-emerald-500 text-emerald-700 bg-emerald-50">
+              Catálogo Geral Corteplan
             </Badge>
           </div>
           <p className="text-sm text-slate-500 mt-1">
-            {isAdmin
-              ? 'Cadastre e gerencie os produtos, mobiliários e serviços utilizados nos orçamentos.'
-              : 'Consulte os itens e produtos cadastrados na Corteplan para uso nos seus orçamentos.'}
+            Cadastre, edite e gerencie os produtos, mobiliários e serviços disponíveis para todos os
+            orçamentos.
           </p>
         </div>
 
-        {isAdmin && (
+        {canManageItems && (
           <Button
             onClick={handleOpenCreate}
             className="bg-[#3A3A3C] hover:bg-[#2E2E30] text-white shadow-sm gap-2"
@@ -390,14 +384,14 @@ export default function Items() {
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        {isAdmin && (
+                        {canManageItems && (
                           <>
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-slate-500 hover:text-blue-600"
                               onClick={() => handleOpenEdit(item)}
-                              title="Editar item (Admin)"
+                              title="Editar item"
                             >
                               <Edit2 className="h-4 w-4" />
                             </Button>
@@ -406,7 +400,7 @@ export default function Items() {
                               size="icon"
                               className="h-8 w-8 text-slate-500 hover:text-red-600"
                               onClick={() => setIsDeleting(item)}
-                              title="Excluir item (Admin)"
+                              title="Excluir item"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -422,7 +416,7 @@ export default function Items() {
         )}
       </div>
 
-      {/* Modal de Criação / Edição (Somente Administrador) */}
+      {/* Modal de Criação / Edição */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
@@ -639,7 +633,7 @@ export default function Items() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Exclusão (Admin) */}
+      {/* Modal de Exclusão */}
       <Dialog open={!!isDeleting} onOpenChange={(open) => !open && setIsDeleting(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

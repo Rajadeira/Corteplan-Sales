@@ -1,10 +1,11 @@
 // pocketbase/hooks/access_control.js
 // Regras de controle de acesso para Orçamentos, Pedidos, Clientes, Itens e Configurações
-// NOTA: Em hooks do PocketBase, todas as variáveis e funções devem ser declaradas dentro dos callbacks
+// NOTA: No PocketBase v0.23+ (Go 1.22 mux), o objeto de autenticação da requisição é obtido diretamente via e.auth
+// (e não via e.httpContext.get('authRecord'), que causava TypeError: Cannot read property 'get' of undefined or null).
 
 // 1. Regras de alteração de Orçamentos (Quotes)
 onRecordUpdateRequest((e) => {
-  const auth = e.httpContext.get('authRecord')
+  const auth = e.auth
   if (!auth) {
     throw new ForbiddenError('Acesso não autorizado.')
   }
@@ -40,7 +41,7 @@ onRecordUpdateRequest((e) => {
 }, 'quotes')
 
 onRecordDeleteRequest((e) => {
-  const auth = e.httpContext.get('authRecord')
+  const auth = e.auth
   if (!auth) {
     throw new ForbiddenError('Acesso não autorizado.')
   }
@@ -69,7 +70,7 @@ onRecordDeleteRequest((e) => {
 }, 'quotes')
 
 onRecordCreateRequest((e) => {
-  const auth = e.httpContext.get('authRecord')
+  const auth = e.auth
   if (auth) {
     const role = auth.get('role')
     const isAdmin = role === 'Administrador'
@@ -85,7 +86,7 @@ onRecordCreateRequest((e) => {
 
 // 2. Regras de alteração de Pedidos (Orders)
 onRecordUpdateRequest((e) => {
-  const auth = e.httpContext.get('authRecord')
+  const auth = e.auth
   if (!auth) {
     throw new ForbiddenError('Acesso não autorizado.')
   }
@@ -114,7 +115,7 @@ onRecordUpdateRequest((e) => {
 }, 'orders')
 
 onRecordDeleteRequest((e) => {
-  const auth = e.httpContext.get('authRecord')
+  const auth = e.auth
   if (!auth) {
     throw new ForbiddenError('Acesso não autorizado.')
   }
@@ -143,7 +144,7 @@ onRecordDeleteRequest((e) => {
 }, 'orders')
 
 onRecordCreateRequest((e) => {
-  const auth = e.httpContext.get('authRecord')
+  const auth = e.auth
   if (auth) {
     const role = auth.get('role')
     const isAdmin = role === 'Administrador'
@@ -159,7 +160,7 @@ onRecordCreateRequest((e) => {
 
 // 3. Regras de Clientes (Clients): apenas Administrador pode criar, editar ou excluir
 onRecordCreateRequest((e) => {
-  const auth = e.httpContext.get('authRecord')
+  const auth = e.auth
   const role = auth ? auth.get('role') : ''
   if (!auth || role !== 'Administrador') {
     throw new ForbiddenError('Apenas administradores podem cadastrar novos clientes.')
@@ -168,7 +169,7 @@ onRecordCreateRequest((e) => {
 }, 'clients')
 
 onRecordUpdateRequest((e) => {
-  const auth = e.httpContext.get('authRecord')
+  const auth = e.auth
   const role = auth ? auth.get('role') : ''
   if (!auth || role !== 'Administrador') {
     throw new ForbiddenError('Apenas administradores podem editar clientes.')
@@ -177,7 +178,7 @@ onRecordUpdateRequest((e) => {
 }, 'clients')
 
 onRecordDeleteRequest((e) => {
-  const auth = e.httpContext.get('authRecord')
+  const auth = e.auth
   const role = auth ? auth.get('role') : ''
   if (!auth || role !== 'Administrador') {
     throw new ForbiddenError('Apenas administradores podem excluir clientes.')

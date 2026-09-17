@@ -12,9 +12,12 @@ import {
   FileText,
   Loader2,
   ExternalLink,
+  Lock,
 } from 'lucide-react'
 import { clientService } from '@/services/clients'
 import { quoteService } from '@/services/quotes'
+import { useAuth } from '@/contexts/AuthContext'
+import { canViewValues } from '@/lib/permissions'
 import type { ClientRecord, QuoteRecord } from '@/types'
 import { formatCurrencyBRL, formatDateBR, formatQuoteNumber, maskPhoneBR } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -26,6 +29,7 @@ import { toast } from 'sonner'
 export default function ClientDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   const [client, setClient] = useState<ClientRecord | null>(null)
   const [quotes, setQuotes] = useState<QuoteRecord[]>([])
@@ -298,9 +302,15 @@ export default function ClientDetail() {
                   </div>
 
                   <div className="flex items-center gap-4 shrink-0">
-                    <span className="font-mono text-sm font-bold text-slate-900">
-                      {formatCurrencyBRL(q.total)}
-                    </span>
+                    {canViewValues(q, user) ? (
+                      <span className="font-mono text-sm font-bold text-slate-900">
+                        {formatCurrencyBRL(q.total)}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-mono font-semibold text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                        <Lock className="h-3 w-3" /> Confidencial
+                      </span>
+                    )}
                     <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-slate-700 transition-colors" />
                   </div>
                 </div>

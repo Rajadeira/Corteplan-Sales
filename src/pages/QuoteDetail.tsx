@@ -1003,6 +1003,10 @@ export default function QuoteDetail() {
               }
 
               if (blockId === 'signature') {
+                const sellerDisplayName =
+                  quote.seller || quote.expand?.seller_user?.name || user?.name || ''
+                const quoteDateFormatted = formatDateBR(quote.created)
+
                 return (
                   <LayoutBlockWrapper
                     key={blockId}
@@ -1014,24 +1018,28 @@ export default function QuoteDetail() {
                     onUpdateStyle={handleUpdateBlockStyle}
                     onMoveOrder={handleMoveBlockOrder}
                   >
-                    <div className="pt-10 mt-6 border-t border-slate-300 print-avoid-break">
-                      <div className="max-w-md mx-auto space-y-8 text-center text-xs text-slate-700">
+                    <div className="pt-8 mt-6 border-t border-slate-300 print-avoid-break">
+                      <div className="max-w-md mx-auto space-y-6 text-center text-xs text-slate-700">
                         <div className="space-y-1">
-                          <div className="border-b border-slate-900 w-full h-8" />
+                          <div className="border-b border-slate-900 w-full min-h-[2rem] pb-1 flex items-end justify-center font-medium text-slate-900">
+                            {sellerDisplayName}
+                          </div>
                           <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
                             Nome Legível
                           </div>
                         </div>
 
                         <div className="space-y-1">
-                          <div className="border-b border-slate-900 w-full h-8" />
+                          <div className="border-b border-slate-900 w-full h-10" />
                           <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
                             Assinatura
                           </div>
                         </div>
 
                         <div className="space-y-1">
-                          <div className="border-b border-slate-900 w-full h-8" />
+                          <div className="border-b border-slate-900 w-full min-h-[2rem] pb-1 flex items-end justify-center font-medium font-mono text-slate-900">
+                            {quoteDateFormatted}
+                          </div>
                           <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
                             Data
                           </div>

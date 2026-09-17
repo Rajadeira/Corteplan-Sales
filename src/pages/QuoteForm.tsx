@@ -229,15 +229,9 @@ export default function QuoteForm() {
           setFormattedNumber(next.formatted)
 
           // Seleção padrão do vendedor logado ou do primeiro usuário da lista
-          if (user?.name) {
-            setSeller(user.name)
-            const cur = usersData.find((u) => u.id === user.id || u.email === user.email)
-            if (cur) {
-              setSelectedSellerUserId(cur.id)
-            } else if (usersData.length > 0) {
-              setSelectedSellerUserId(usersData[0].id)
-              setSeller(usersData[0].name)
-            }
+          if (user?.id) {
+            setSelectedSellerUserId(user.id)
+            setSeller(user.name || 'Vendedor')
           } else if (usersData.length > 0) {
             setSelectedSellerUserId(usersData[0].id)
             setSeller(usersData[0].name)
@@ -471,6 +465,14 @@ export default function QuoteForm() {
     }))
 
     const userName = user?.name || seller || 'Gustavo Tibério'
+    const finalSellerUser =
+      user?.role === 'Administrador'
+        ? selectedSellerUserId || user.id
+        : user?.id || selectedSellerUserId || undefined
+    const finalSellerName =
+      user?.role === 'Administrador'
+        ? seller.trim() || 'Gustavo'
+        : user?.name || seller.trim() || 'Vendedor'
 
     try {
       const quotePayload = {
@@ -480,8 +482,8 @@ export default function QuoteForm() {
         subtotal: Math.round(subtotal * 100) / 100,
         total: Math.round(total * 100) / 100,
         observations: observations.trim() || undefined,
-        seller: seller.trim() || 'Gustavo',
-        seller_user: selectedSellerUserId || undefined,
+        seller: finalSellerName,
+        seller_user: finalSellerUser,
         commission_percent: Number(commissionPercent) || 0,
         validity_days: Number(validityDays) || 5,
         delivery_term: deliveryTerm.trim() || 'À Combinar',
@@ -1218,35 +1220,44 @@ export default function QuoteForm() {
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Seleção do Vendedor entre os usuários */}
+              {/* Seleção do Vendedor entre os usuários (Apenas Administrador pode reatribuir) */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-700">Vendedor Responsável</Label>
-                {usersList.length > 0 ? (
-                  <Select
-                    value={selectedSellerUserId}
-                    onValueChange={(val) => {
-                      setSelectedSellerUserId(val)
-                      const found = usersList.find((u) => u.id === val)
-                      if (found) setSeller(found.name)
-                    }}
-                  >
-                    <SelectTrigger className="text-xs sm:text-sm bg-white">
-                      <SelectValue placeholder="Selecione o vendedor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {usersList.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.name} {u.role ? `(${u.role})` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                {user?.role === 'Administrador' ? (
+                  usersList.length > 0 ? (
+                    <Select
+                      value={selectedSellerUserId}
+                      onValueChange={(val) => {
+                        setSelectedSellerUserId(val)
+                        const found = usersList.find((u) => u.id === val)
+                        if (found) setSeller(found.name)
+                      }}
+                    >
+                      <SelectTrigger className="text-xs sm:text-sm bg-white">
+                        <SelectValue placeholder="Selecione o vendedor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {usersList.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.name} {u.role ? `(${u.role})` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      placeholder="Ex: Gustavo"
+                      value={seller}
+                      onChange={(e) => setSeller(e.target.value)}
+                      className="text-xs sm:text-sm"
+                    />
+                  )
                 ) : (
                   <Input
-                    placeholder="Ex: Gustavo"
-                    value={seller}
-                    onChange={(e) => setSeller(e.target.value)}
-                    className="text-xs sm:text-sm"
+                    value={user?.name || seller || 'Vendedor'}
+                    disabled
+                    className="text-xs sm:text-sm bg-slate-100 text-slate-700 font-medium cursor-not-allowed"
+                    title="Vendedores criam orçamentos atribuídos automaticamente ao seu próprio usuário"
                   />
                 )}
               </div>
