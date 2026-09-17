@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Award, Lock, ShieldCheck } from 'lucide-react'
+import { canViewValues } from '@/lib/permissions'
 
 export default function Index() {
   const { user } = useAuth()
@@ -743,9 +744,16 @@ export default function Index() {
                     </div>
 
                     <div className="text-right shrink-0">
-                      <span className="font-mono text-xs font-bold text-slate-900">
-                        {formatCurrencyBRL(quote.total)}
-                      </span>
+                      {canViewValues(quote, user) ? (
+                        <span className="font-mono text-xs font-bold text-slate-900">
+                          {formatCurrencyBRL(quote.total)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 font-mono font-semibold text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                          <Lock className="h-3 w-3 text-slate-400" />
+                          Confidencial
+                        </span>
+                      )}
                     </div>
                   </Link>
                 ))

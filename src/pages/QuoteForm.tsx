@@ -92,7 +92,13 @@ export default function QuoteForm() {
 
   // Desconto e Observações
   const [discountPercent, setDiscountPercent] = useState<number>(0)
-  const [observations, setObservations] = useState<string>('')
+  const DEFAULT_OBSERVATIONS = `Prazo de entrega: 35 dias úteis
+Pagamento: 50% Sinal, saldo em 30 dias após emissão da NF-e, conforme análise cadastral.
+Este orçamento contempla exclusivamente os itens, quantidades, materiais, acabamentos e especificações técnicas descritos na proposta.
+Itens, serviços ou soluções não mencionados expressamente estão fora do escopo e serão cotados separadamente, caso solicitados.
+Alterações ou inclusões após a aprovação poderão acarretar revisão de valores, prazos e condições comerciais.
+Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conexão, cabendo ao cliente a disponibilização do ponto de alimentação conforme especificação técnica.`
+  const [observations, setObservations] = useState<string>(isEditing ? '' : DEFAULT_OBSERVATIONS)
 
   // Novos campos CORTEPLAN & Vendedores/Comissão
   const [usersList, setUsersList] = useState<AppUserRecord[]>([])
@@ -227,6 +233,7 @@ export default function QuoteForm() {
           const next = await quoteService.getNextQuoteNumber()
           setQuoteNumber(next.nextNumber)
           setFormattedNumber(next.formatted)
+          setObservations(DEFAULT_OBSERVATIONS)
 
           // Seleção padrão do vendedor logado ou do primeiro usuário da lista
           if (user?.id) {
