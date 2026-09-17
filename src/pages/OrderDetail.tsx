@@ -14,6 +14,8 @@ import {
 import { orderService } from '@/services/orders'
 import { useAuth } from '@/contexts/AuthContext'
 import type { OrderRecord, OrderStatus, ProposalLayoutConfig, ProposalBlockId } from '@/types'
+import { canViewValues, canManageRecord } from '@/lib/permissions'
+import { Lock, ShieldAlert } from 'lucide-react'
 import {
   DEFAULT_PAGE1_ORDER,
   DEFAULT_PAGE2_ORDER,

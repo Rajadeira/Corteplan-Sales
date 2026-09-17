@@ -18,6 +18,8 @@ import {
   User,
   ShieldCheck,
   Building,
+  Package,
+  Settings,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { clientService } from '@/services/clients'
@@ -38,15 +40,18 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 
 const navItems = [
-  { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-  { name: 'Clientes', path: '/clientes', icon: Users },
-  { name: 'Orçamentos', path: '/orcamentos', icon: FileText },
-  { name: 'Pedidos', path: '/pedidos', icon: PackageCheck },
-  { name: 'Usuários', path: '/usuarios', icon: UserCheck },
+  { name: 'Dashboard', path: '/', icon: LayoutDashboard, adminOnly: false },
+  { name: 'Orçamentos', path: '/orcamentos', icon: FileText, adminOnly: false },
+  { name: 'Pedidos', path: '/pedidos', icon: PackageCheck, adminOnly: false },
+  { name: 'Itens', path: '/itens', icon: Package, adminOnly: false },
+  { name: 'Clientes', path: '/clientes', icon: Users, adminOnly: false },
+  { name: 'Usuários', path: '/usuarios', icon: UserCheck, adminOnly: true },
+  { name: 'Configurações', path: '/configuracoes', icon: Settings, adminOnly: true },
 ]
 
 export default function Layout() {
   const { user, logout } = useAuth()
+  const isAdmin = user?.role === 'Administrador'
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -148,8 +153,10 @@ export default function Layout() {
     if (path.startsWith('/orcamentos/')) return 'Detalhes do Orçamento'
     if (path === '/pedidos') return 'Pedidos'
     if (path.startsWith('/pedidos/')) return 'Detalhes do Pedido'
+    if (path === '/itens') return 'Catálogo de Itens'
     if (path === '/usuarios') return 'Usuários'
-    return 'Mobiliário & Visual'
+    if (path === '/configuracoes') return 'Configurações do Sistema'
+    return 'Corteplan Gestão'
   }
 
   return (
@@ -197,42 +204,44 @@ export default function Layout() {
 
         {/* Navigation Items */}
         <nav className="flex-1 space-y-1.5 px-3 py-4 overflow-y-auto">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isActive =
-              item.path === '/'
-                ? location.pathname === '/'
-                : location.pathname.startsWith(item.path) &&
-                  (item.path !== '/orcamentos' ||
-                    location.pathname === '/orcamentos' ||
-                    location.pathname.startsWith('/orcamentos/'))
+          {navItems
+            .filter((item) => !item.adminOnly || isAdmin)
+            .map((item) => {
+              const Icon = item.icon
+              const isActive =
+                item.path === '/'
+                  ? location.pathname === '/'
+                  : location.pathname.startsWith(item.path) &&
+                    (item.path !== '/orcamentos' ||
+                      location.pathname === '/orcamentos' ||
+                      location.pathname.startsWith('/orcamentos/'))
 
-            const isExactActive = location.pathname === item.path
+              const isExactActive = location.pathname === item.path
 
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                title={collapsed ? item.name : undefined}
-                className={`flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-sm font-medium transition-all duration-200 ${
-                  isExactActive ||
-                  (item.path !== '/' &&
-                    isActive &&
-                    item.path === '/orcamentos' &&
-                    !location.pathname.includes('/novo'))
-                    ? 'bg-white/15 text-white shadow-sm border-l-4 border-[#F08A24] font-semibold'
-                    : 'text-slate-200 hover:bg-white/10 hover:text-white'
-                } ${collapsed ? 'justify-center px-0' : ''}`}
-              >
-                <Icon
-                  className={`h-5 w-5 shrink-0 transition-transform duration-200 ${
-                    isActive ? 'text-[#F08A24]' : 'text-slate-300'
-                  }`}
-                />
-                {!collapsed && <span>{item.name}</span>}
-              </Link>
-            )
-          })}
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  title={collapsed ? item.name : undefined}
+                  className={`flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-sm font-medium transition-all duration-200 ${
+                    isExactActive ||
+                    (item.path !== '/' &&
+                      isActive &&
+                      item.path === '/orcamentos' &&
+                      !location.pathname.includes('/novo'))
+                      ? 'bg-white/15 text-white shadow-sm border-l-4 border-[#F08A24] font-semibold'
+                      : 'text-slate-200 hover:bg-white/10 hover:text-white'
+                  } ${collapsed ? 'justify-center px-0' : ''}`}
+                >
+                  <Icon
+                    className={`h-5 w-5 shrink-0 transition-transform duration-200 ${
+                      isActive ? 'text-[#F08A24]' : 'text-slate-300'
+                    }`}
+                  />
+                  {!collapsed && <span>{item.name}</span>}
+                </Link>
+              )
+            })}
         </nav>
 
         {/* Collapse Toggle (Desktop only) */}
@@ -447,24 +456,43 @@ export default function Layout() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/clientes')} className="cursor-pointer">
-                  <Users className="mr-2 h-4 w-4 text-slate-500" />
-                  <span>Gerenciar Clientes</span>
-                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => navigate('/orcamentos')}
                   className="cursor-pointer"
                 >
                   <FileText className="mr-2 h-4 w-4 text-slate-500" />
-                  <span>Histórico de Orçamentos</span>
+                  <span>Orçamentos</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => navigate('/orcamentos/novo')}
-                  className="cursor-pointer text-[#3A3A3C] font-medium hover:text-[#F08A24]"
-                >
-                  <PlusCircle className="mr-2 h-4 w-4 text-[#F08A24]" />
-                  <span>Criar Novo Orçamento</span>
+                <DropdownMenuItem onClick={() => navigate('/pedidos')} className="cursor-pointer">
+                  <PackageCheck className="mr-2 h-4 w-4 text-slate-500" />
+                  <span>Pedidos</span>
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/itens')} className="cursor-pointer">
+                  <Package className="mr-2 h-4 w-4 text-slate-500" />
+                  <span>Catálogo de Itens</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/clientes')} className="cursor-pointer">
+                  <Users className="mr-2 h-4 w-4 text-slate-500" />
+                  <span>Clientes</span>
+                </DropdownMenuItem>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() => navigate('/usuarios')}
+                      className="cursor-pointer"
+                    >
+                      <UserCheck className="mr-2 h-4 w-4 text-slate-500" />
+                      <span>Usuários</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => navigate('/configuracoes')}
+                      className="cursor-pointer"
+                    >
+                      <Settings className="mr-2 h-4 w-4 text-slate-500" />
+                      <span>Configurações</span>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={logout}

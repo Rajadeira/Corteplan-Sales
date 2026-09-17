@@ -21,8 +21,10 @@ import type {
   QuoteStatus,
   ProposalLayoutConfig,
   ProposalBlockId,
-  BlockStyleConfig,
+  ProposalBlockStyle,
 } from '@/types'
+import { canViewValues, canManageRecord } from '@/lib/permissions'
+import { Lock, ShieldAlert } from 'lucide-react'
 import {
   CorelToolbar,
   LayoutBlockWrapper,
@@ -273,6 +275,36 @@ export default function QuoteDetail() {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Voltar para Orçamentos
         </Button>
+      </div>
+    )
+  }
+
+  // Regra 02: Vendedor só pode visualizar e detalhar seus próprios orçamentos (ou com valores confidenciais se abrir direto)
+  const isAllowedToManage = canManageRecord(quote, user)
+  const isAllowedToViewValues = canViewValues(quote, user)
+  if (!isAllowedToManage && user?.role !== 'Administrador') {
+    return (
+      <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-xs max-w-xl mx-auto my-12 text-center space-y-4">
+        <div className="h-14 w-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+          <ShieldAlert className="h-7 w-7" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-xl font-bold text-slate-900">Acesso Restrito / Confidencial</h2>
+          <p className="text-sm text-slate-500">
+            Este orçamento pertence a outro vendedor. Pelas regras de segurança da Corteplan, você
+            não possui permissão para visualizar os detalhes internos, editar, duplicar ou gerar PDF
+            desta proposta.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Button
+            onClick={() => navigate('/orcamentos')}
+            className="bg-[#3A3A3C] hover:bg-[#2E2E30] text-white"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Voltar para lista de orçamentos
+          </Button>
+        </div>
       </div>
     )
   }

@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-09-17T05:08:15.748Z",
+  "generatedAt": "2026-09-17T09:15:43.680Z",
   "collections": [
     {
       "name": "users",
       "type": "auth",
       "apiRules": {
-        "list": "id = @request.auth.id",
-        "view": "id = @request.auth.id",
-        "create": "",
-        "update": "id = @request.auth.id",
-        "delete": "id = @request.auth.id"
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.role = \"Administrador\"",
+        "update": "@request.auth.role = \"Administrador\" || @request.auth.id = id",
+        "delete": "@request.auth.role = \"Administrador\""
       },
       "fields": [
         {
@@ -55,11 +55,11 @@
       "name": "clients",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.role = \"Administrador\"",
+        "update": "@request.auth.role = \"Administrador\"",
+        "delete": "@request.auth.role = \"Administrador\""
       },
       "fields": [
         {
@@ -520,6 +520,32 @@
         "CREATE INDEX idx_orders_client ON orders (client)",
         "CREATE INDEX idx_orders_quote ON orders (quote)"
       ]
+    },
+    {
+      "name": "items",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": "@request.auth.role = \"Administrador\"",
+        "update": null,
+        "delete": "@request.auth.role = \"Administrador\""
+      },
+      "fields": [],
+      "indexes": []
+    },
+    {
+      "name": "app_settings",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": "@request.auth.role = \"Administrador\"",
+        "update": null,
+        "delete": "@request.auth.role = \"Administrador\""
+      },
+      "fields": [],
+      "indexes": []
     }
   ]
 }

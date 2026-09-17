@@ -27,6 +27,8 @@ import {
   formatOrderNumber,
   calculateCommission,
 } from '@/types'
+import { canViewValues, canManageRecord } from '@/lib/permissions'
+import { Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -370,36 +372,51 @@ export default function Quotes() {
 
                     {/* Valor Total + Comissão Secundária */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
-                      <span className="font-mono font-bold text-xs sm:text-sm text-slate-900 block">
-                        {formatCurrencyBRL(quote.total)}
-                      </span>
-                      {(() => {
-                        const sellerName =
-                          quote.seller || quote.expand?.seller_user?.name || 'Gustavo'
-                        const { commissionAmount } = calculateCommission(
-                          quote.items,
-                          quote.discount_percent,
-                          quote.commission_percent,
-                        )
-                        if (commissionAmount > 0) {
-                          return (
-                            <span
-                              className="text-[11px] text-slate-500 block truncate"
-                              title={`Comissão calculada: ${formatCurrencyBRL(commissionAmount)} — ${sellerName}`}
-                            >
-                              Comissão: {formatCurrencyBRL(commissionAmount)} — {sellerName}
-                            </span>
-                          )
-                        }
-                        if (sellerName) {
-                          return (
-                            <span className="text-[11px] text-slate-400 block truncate">
-                              Vendedor: {sellerName}
-                            </span>
-                          )
-                        }
-                        return null
-                      })()}
+                      {canViewValues(quote, user) ? (
+                        <>
+                          <span className="font-mono font-bold text-xs sm:text-sm text-slate-900 block">
+                            {formatCurrencyBRL(quote.total)}
+                          </span>
+                          {(() => {
+                            const sellerName =
+                              quote.seller || quote.expand?.seller_user?.name || 'Gustavo'
+                            const { commissionAmount } = calculateCommission(
+                              quote.items,
+                              quote.discount_percent,
+                              quote.commission_percent,
+                            )
+                            if (commissionAmount > 0) {
+                              return (
+                                <span
+                                  className="text-[11px] text-slate-500 block truncate"
+                                  title={`Comissão calculada: ${formatCurrencyBRL(commissionAmount)} — ${sellerName}`}
+                                >
+                                  Comissão: {formatCurrencyBRL(commissionAmount)} — {sellerName}
+                                </span>
+                              )
+                            }
+                            if (sellerName) {
+                              return (
+                                <span className="text-[11px] text-slate-400 block truncate">
+                                  Vendedor: {sellerName}
+                                </span>
+                              )
+                            }
+                            return null
+                          })()}
+                        </>
+                      ) : (
+                        <div>
+                          <span className="inline-flex items-center gap-1 font-mono font-semibold text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                            <Lock className="h-3 w-3 text-slate-400" />
+                            Confidencial
+                          </span>
+                          <span className="text-[11px] text-slate-400 block truncate mt-0.5">
+                            Vendedor:{' '}
+                            {quote.seller || quote.expand?.seller_user?.name || 'Outro Vendedor'}
+                          </span>
+                        </div>
+                      )}
                     </td>
 
                     {/* Status */}
@@ -410,28 +427,29 @@ export default function Quotes() {
                     {/* Ações: Visualizar, Editar, Imprimir e Gerar Pedido */}
                     <td className="py-3.5 px-5 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
-                        {/* Ação "Gerar pedido" disponível para Enviado ou Aprovado */}
-                        {(quote.status === 'Enviado' || quote.status === 'Aprovado') && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={generatingOrderId === quote.id}
-                            onClick={() => handleGenerateOrder(quote)}
-                            className="h-8 px-2.5 text-xs font-semibold rounded-lg bg-orange-50/70 border-orange-200 text-[#E66812] hover:bg-[#F08A24] hover:text-white transition-all shadow-2xs"
-                            title={
-                              quote.order_number
-                                ? `Já possui pedido vinculado (${formatOrderNumber(quote.order_number)}). Clique para gerar novo se necessário.`
-                                : 'Gerar Pedido a partir deste orçamento'
-                            }
-                          >
-                            {generatingOrderId === quote.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <PackageCheck className="h-3.5 w-3.5 mr-1" />
-                            )}
-                            Gerar pedido
-                          </Button>
-                        )}
+                        {/* Ação "Gerar pedido" disponível para Enviado ou Aprovado (somente dono ou admin) */}
+                        {canManageRecord(quote, user) &&
+                          (quote.status === 'Enviado' || quote.status === 'Aprovado') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={generatingOrderId === quote.id}
+                              onClick={() => handleGenerateOrder(quote)}
+                              className="h-8 px-2.5 text-xs font-semibold rounded-lg bg-orange-50/70 border-orange-200 text-[#E66812] hover:bg-[#F08A24] hover:text-white transition-all shadow-2xs"
+                              title={
+                                quote.order_number
+                                  ? `Já possui pedido vinculado (${formatOrderNumber(quote.order_number)}). Clique para gerar novo se necessário.`
+                                  : 'Gerar Pedido a partir deste orçamento'
+                              }
+                            >
+                              {generatingOrderId === quote.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <PackageCheck className="h-3.5 w-3.5 mr-1" />
+                              )}
+                              Gerar pedido
+                            </Button>
+                          )}
 
                         <Button
                           variant="ghost"
@@ -443,25 +461,29 @@ export default function Quotes() {
                           <Eye className="h-4 w-4" />
                         </Button>
 
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => navigate(`/orcamentos/${quote.id}/editar`)}
-                          className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                          title="Editar orçamento"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
+                        {canManageRecord(quote, user) && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => navigate(`/orcamentos/${quote.id}/editar`)}
+                              className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                              title="Editar orçamento"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
 
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => navigate(`/orcamentos/${quote.id}?print=true`)}
-                          className="h-8 w-8 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-                          title="Imprimir proposta"
-                        >
-                          <Printer className="h-4 w-4" />
-                        </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => navigate(`/orcamentos/${quote.id}?print=true`)}
+                              className="h-8 w-8 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                              title="Imprimir proposta"
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -509,26 +531,34 @@ export default function Quotes() {
                 <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
                   <div>
                     <span className="text-[11px] text-slate-400 block">Valor da Proposta</span>
-                    <span className="font-mono font-bold text-slate-900">
-                      {formatCurrencyBRL(quote.total)}
-                    </span>
-                    {(() => {
-                      const sellerName =
-                        quote.seller || quote.expand?.seller_user?.name || 'Gustavo'
-                      const { commissionAmount } = calculateCommission(
-                        quote.items,
-                        quote.discount_percent,
-                        quote.commission_percent,
-                      )
-                      if (commissionAmount > 0) {
-                        return (
-                          <span className="text-[10px] text-slate-500 block">
-                            Comissão: {formatCurrencyBRL(commissionAmount)} — {sellerName}
-                          </span>
-                        )
-                      }
-                      return null
-                    })()}
+                    {canViewValues(quote, user) ? (
+                      <>
+                        <span className="font-mono font-bold text-slate-900">
+                          {formatCurrencyBRL(quote.total)}
+                        </span>
+                        {(() => {
+                          const sellerName =
+                            quote.seller || quote.expand?.seller_user?.name || 'Gustavo'
+                          const { commissionAmount } = calculateCommission(
+                            quote.items,
+                            quote.discount_percent,
+                            quote.commission_percent,
+                          )
+                          if (commissionAmount > 0) {
+                            return (
+                              <span className="text-[10px] text-slate-500 block">
+                                Comissão: {formatCurrencyBRL(commissionAmount)} — {sellerName}
+                              </span>
+                            )
+                          }
+                          return null
+                        })()}
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-mono font-semibold text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                        <Lock className="h-3 w-3" /> Confidencial
+                      </span>
+                    )}
                   </div>
 
                   <div className="text-right">
@@ -538,22 +568,23 @@ export default function Quotes() {
                 </div>
 
                 <div className="flex items-center justify-end gap-1 pt-2 border-t border-slate-100 flex-wrap">
-                  {(quote.status === 'Enviado' || quote.status === 'Aprovado') && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={generatingOrderId === quote.id}
-                      onClick={() => handleGenerateOrder(quote)}
-                      className="h-8 text-xs font-semibold bg-orange-50 text-[#E66812] border-orange-200"
-                    >
-                      {generatingOrderId === quote.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                      ) : (
-                        <PackageCheck className="h-3.5 w-3.5 mr-1" />
-                      )}
-                      Gerar pedido
-                    </Button>
-                  )}
+                  {canManageRecord(quote, user) &&
+                    (quote.status === 'Enviado' || quote.status === 'Aprovado') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={generatingOrderId === quote.id}
+                        onClick={() => handleGenerateOrder(quote)}
+                        className="h-8 text-xs font-semibold bg-orange-50 text-[#E66812] border-orange-200"
+                      >
+                        {generatingOrderId === quote.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                        ) : (
+                          <PackageCheck className="h-3.5 w-3.5 mr-1" />
+                        )}
+                        Gerar pedido
+                      </Button>
+                    )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -562,22 +593,26 @@ export default function Quotes() {
                   >
                     <Eye className="h-3.5 w-3.5 mr-1" /> Ver
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate(`/orcamentos/${quote.id}/editar`)}
-                    className="h-8 text-amber-600"
-                  >
-                    <Edit className="h-3.5 w-3.5 mr-1" /> Editar
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate(`/orcamentos/${quote.id}?print=true`)}
-                    className="h-8 text-slate-700"
-                  >
-                    <Printer className="h-3.5 w-3.5 mr-1" /> Imprimir
-                  </Button>
+                  {canManageRecord(quote, user) && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/orcamentos/${quote.id}/editar`)}
+                        className="h-8 text-amber-600"
+                      >
+                        <Edit className="h-3.5 w-3.5 mr-1" /> Editar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/orcamentos/${quote.id}?print=true`)}
+                        className="h-8 text-slate-700"
+                      >
+                        <Printer className="h-3.5 w-3.5 mr-1" /> Imprimir
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

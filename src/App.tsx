@@ -18,6 +18,8 @@ import QuoteForm from './pages/QuoteForm'
 import Orders from './pages/Orders'
 import OrderDetail from './pages/OrderDetail'
 import Users from './pages/Users'
+import Items from './pages/Items'
+import SettingsPage from './pages/Settings'
 import NotFound from './pages/NotFound'
 const App = () => (
   <BrowserRouter>
@@ -47,7 +49,23 @@ const App = () => (
             <Route path="/orcamentos/:id/editar" element={<QuoteForm />} />
             <Route path="/pedidos" element={<Orders />} />
             <Route path="/pedidos/:id" element={<OrderDetail />} />
-            <Route path="/usuarios" element={<Users />} />
+            <Route path="/itens" element={<Items />} />
+            <Route
+              path="/usuarios"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <Users />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/configuracoes"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <SettingsPage />
+                </ProtectedRoute>
+              }
+            />
           </Route>
 
           <Route path="*" element={<NotFound />} />

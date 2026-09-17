@@ -16,6 +16,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { orderService } from '@/services/orders'
+import { useAuth } from '@/contexts/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
 import type { OrderRecord, OrderStatus } from '@/types'
 import {
@@ -25,6 +26,8 @@ import {
   formatQuoteNumber,
   calculateCommission,
 } from '@/types'
+import { canViewValues, canManageRecord } from '@/lib/permissions'
+import { Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -427,20 +430,34 @@ export default function Orders() {
 
                       {/* Valor Total + Comissão Discreta */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="font-mono font-bold text-xs sm:text-sm text-slate-900 block">
-                          {formatCurrencyBRL(order.total)}
-                        </span>
-                        {comm > 0 ? (
-                          <span
-                            className="text-[11px] text-slate-500 block truncate"
-                            title={`Comissão calculada: ${formatCurrencyBRL(comm)} — Vendedor: ${sellerName}`}
-                          >
-                            Comissão: {formatCurrencyBRL(comm)} — {sellerName}
-                          </span>
+                        {canViewValues(order, user) ? (
+                          <>
+                            <span className="font-mono font-bold text-xs sm:text-sm text-slate-900 block">
+                              {formatCurrencyBRL(order.total)}
+                            </span>
+                            {comm > 0 ? (
+                              <span
+                                className="text-[11px] text-slate-500 block truncate"
+                                title={`Comissão calculada: ${formatCurrencyBRL(comm)} — Vendedor: ${sellerName}`}
+                              >
+                                Comissão: {formatCurrencyBRL(comm)} — {sellerName}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 block truncate">
+                                Vendedor: {sellerName}
+                              </span>
+                            )}
+                          </>
                         ) : (
-                          <span className="text-[11px] text-slate-400 block truncate">
-                            Vendedor: {sellerName}
-                          </span>
+                          <div>
+                            <span className="inline-flex items-center gap-1 font-mono font-semibold text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                              <Lock className="h-3 w-3 text-slate-400" />
+                              Confidencial
+                            </span>
+                            <span className="text-[11px] text-slate-400 block truncate mt-0.5">
+                              Vendedor: {sellerName}
+                            </span>
+                          </div>
                         )}
                       </td>
 
@@ -462,26 +479,30 @@ export default function Orders() {
                             <Eye className="h-4 w-4" />
                           </Button>
 
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => navigate(`/pedidos/${order.id}?print=true`)}
-                            className="h-8 w-8 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-                            title="Imprimir pedido"
-                          >
-                            <Printer className="h-4 w-4" />
-                          </Button>
+                          {canManageRecord(order, user) && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => navigate(`/pedidos/${order.id}?print=true`)}
+                                className="h-8 w-8 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                                title="Imprimir pedido"
+                              >
+                                <Printer className="h-4 w-4" />
+                              </Button>
 
-                          {order.status !== 'Cancelado' && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setOrderToCancel(order)}
-                              className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Cancelar pedido"
-                            >
-                              <Ban className="h-4 w-4" />
-                            </Button>
+                              {order.status !== 'Cancelado' && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setOrderToCancel(order)}
+                                  className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Cancelar pedido"
+                                >
+                                  <Ban className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>
@@ -537,12 +558,20 @@ export default function Orders() {
                   <div className="pt-2 border-t border-slate-100 text-xs flex justify-between items-end">
                     <div>
                       <span className="text-[11px] text-slate-400 block">Total do Pedido</span>
-                      <span className="font-mono font-bold text-slate-900">
-                        {formatCurrencyBRL(order.total)}
-                      </span>
-                      {comm > 0 && (
-                        <span className="text-[10px] text-slate-500 block">
-                          Comissão: {formatCurrencyBRL(comm)} — {sellerName}
+                      {canViewValues(order, user) ? (
+                        <>
+                          <span className="font-mono font-bold text-slate-900">
+                            {formatCurrencyBRL(order.total)}
+                          </span>
+                          {comm > 0 && (
+                            <span className="text-[10px] text-slate-500 block">
+                              Comissão: {formatCurrencyBRL(comm)} — {sellerName}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 font-mono font-semibold text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                          <Lock className="h-3 w-3" /> Confidencial
                         </span>
                       )}
                     </div>
@@ -560,23 +589,27 @@ export default function Orders() {
                     >
                       <Eye className="h-3.5 w-3.5 mr-1" /> Ver
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigate(`/pedidos/${order.id}?print=true`)}
-                      className="h-8 text-slate-700"
-                    >
-                      <Printer className="h-3.5 w-3.5 mr-1" /> Imprimir
-                    </Button>
-                    {order.status !== 'Cancelado' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setOrderToCancel(order)}
-                        className="h-8 text-red-600"
-                      >
-                        <Ban className="h-3.5 w-3.5 mr-1" /> Cancelar
-                      </Button>
+                    {canManageRecord(order, user) && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/pedidos/${order.id}?print=true`)}
+                          className="h-8 text-slate-700"
+                        >
+                          <Printer className="h-3.5 w-3.5 mr-1" /> Imprimir
+                        </Button>
+                        {order.status !== 'Cancelado' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setOrderToCancel(order)}
+                            className="h-8 text-red-600"
+                          >
+                            <Ban className="h-3.5 w-3.5 mr-1" /> Cancelar
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

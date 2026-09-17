@@ -72,6 +72,50 @@ export interface AppUserRecord extends RecordModel {
   role?: UserRole
 }
 
+export interface ItemCatalogRecord extends RecordModel {
+  code?: string
+  description: string
+  category: ItemCategory
+  unit: 'un' | 'm²' | 'm' | 'kit' | 'hora'
+  unit_price: number
+  default_tax?: number
+  technical_description?: string
+  image?: string
+  active?: boolean
+  created_by?: string
+}
+
+export interface CompanySettings {
+  name: string
+  trade_name?: string
+  cnpj: string
+  ie?: string
+  phone: string
+  email: string
+  address: string
+  neighborhood?: string
+  city: string
+  state: string
+  zip_code: string
+  website?: string
+}
+
+export interface TaxSettings {
+  icmsPercent: number
+  ipiPercent: number
+  pisPercent: number
+  cofinsPercent: number
+  defaultValidityDays: number
+  defaultPaymentTerms: string
+  defaultDeliveryTerm: string
+}
+
+export interface AppSettingRecord extends RecordModel {
+  setting_key: string
+  value: any
+  description?: string
+}
+
 export interface StatusHistoryEntry {
   status: QuoteStatus | OrderStatus | string
   changed_at: string
