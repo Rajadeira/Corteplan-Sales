@@ -22,10 +22,11 @@ import {
 } from 'recharts'
 import { clientService } from '@/services/clients'
 import { quoteService } from '@/services/quotes'
+import { orderService } from '@/services/orders'
 import { userService } from '@/services/users'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { ClientRecord, QuoteRecord, AppUserRecord } from '@/types'
+import type { ClientRecord, QuoteRecord, OrderRecord, AppUserRecord } from '@/types'
 import { formatCurrencyBRL, formatQuoteNumber, calculateCommission } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -38,18 +39,21 @@ export default function Index() {
   const isAdmin = user?.role === 'Administrador'
   const [clients, setClients] = useState<ClientRecord[]>([])
   const [quotes, setQuotes] = useState<QuoteRecord[]>([])
+  const [orders, setOrders] = useState<OrderRecord[]>([])
   const [usersList, setUsersList] = useState<AppUserRecord[]>([])
   const [loading, setLoading] = useState(true)
 
   const loadData = async () => {
     try {
-      const [allClients, allQuotes, allUsers] = await Promise.all([
+      const [allClients, allQuotes, allOrders, allUsers] = await Promise.all([
         clientService.getAll(),
         quoteService.getAll(),
+        orderService.getAll().catch(() => []),
         userService.getAll().catch(() => []),
       ])
       setClients(allClients)
       setQuotes(allQuotes)
+      setOrders(allOrders)
       setUsersList(allUsers)
     } catch (err) {
       console.error('Erro ao carregar dados do Dashboard:', err)
@@ -68,6 +72,10 @@ export default function Index() {
   })
 
   useRealtime<QuoteRecord>('quotes', () => {
+    loadData()
+  })
+
+  useRealtime<OrderRecord>('orders', () => {
     loadData()
   })
 
@@ -126,12 +134,25 @@ export default function Index() {
 
   // =========================================================================
   // CÁLCULO DAS COMISSÕES DO MÊS ATUAL POR VENDEDOR
-  // Regra Corteplan:
-  // - Orçamentos emitidos no mês corrente (mês e ano de q.created)
-  // - Base comissionável = itens exceto impostos, Frete e Instalação (calculateCommission)
-  // - Confidencialidade: Administrador vê todos os vendedores;
-  //   Vendedor vê apenas a própria linha.
+  // Nova Regra Corteplan solicitada:
+  // "A comissão acumulada no dashboard só pode ser computada após o orçamento gerar o pedido."
+  // - quotesCount: propostas emitidas no mês pelo vendedor (para acompanhamento comercial)
+  // - ordersCount / volume faturado / comissão a receber: COMPUTADOS APENAS para
+  //   orçamentos que já geraram pedido (order_id / order_number presente ou pedido na tabela orders)
+  // - Confidencialidade: Administrador vê todos os vendedores; Vendedor vê apenas a própria linha.
   // =========================================================================
+
+  // Conjunto de quote IDs que possuem pedido vinculado (via tabela orders ou campo do quote)
+  const quotesWithOrdersSet = new Set<string>()
+  orders.forEach((o) => {
+    if (o.quote) quotesWithOrdersSet.add(o.quote)
+  })
+  quotes.forEach((q) => {
+    if ((q.order_id && q.order_id.trim()) || (q.order_number && q.order_number > 0)) {
+      quotesWithOrdersSet.add(q.id)
+    }
+  })
+
   const currentMonthQuotes = quotes.filter((q) => {
     if (!q.created) return false
     const qDate = new Date(q.created)
@@ -144,6 +165,7 @@ export default function Index() {
     name: string
     role: string
     quotesCount: number
+    ordersCount: number
     commissionTotal: number
     totalVolume: number
     isCurrentUser: boolean
@@ -160,6 +182,7 @@ export default function Index() {
       name: u.name || u.email.split('@')[0],
       role: u.role || 'Vendedor',
       quotesCount: 0,
+      ordersCount: 0,
       commissionTotal: 0,
       totalVolume: 0,
       isCurrentUser: isMe,
@@ -168,12 +191,6 @@ export default function Index() {
 
   // Processa cada orçamento do mês
   currentMonthQuotes.forEach((q) => {
-    const { commissionAmount } = calculateCommission(
-      q.items,
-      q.discount_percent,
-      q.commission_percent,
-    )
-
     // Identifica o vendedor
     let sellerKey = q.seller_user
     let sellerName = q.seller || q.expand?.seller_user?.name
@@ -209,6 +226,7 @@ export default function Index() {
         name: finalName,
         role: 'Vendedor',
         quotesCount: 0,
+        ordersCount: 0,
         commissionTotal: 0,
         totalVolume: 0,
         isCurrentUser: isMe,
@@ -216,9 +234,22 @@ export default function Index() {
     }
 
     const existing = sellersMap.get(sellerKey)!
+    // Contador de propostas emitidas no mês
     existing.quotesCount += 1
-    existing.commissionTotal += commissionAmount
-    existing.totalVolume += q.total || 0
+
+    // REGRA: Comissão acumulada e volume faturado SÓ entram se o orçamento já gerou pedido
+    const hasOrder = quotesWithOrdersSet.has(q.id)
+    if (hasOrder) {
+      const { commissionAmount } = calculateCommission(
+        q.items,
+        q.discount_percent,
+        q.commission_percent,
+      )
+      existing.ordersCount += 1
+      existing.commissionTotal += commissionAmount
+      existing.totalVolume += q.total || 0
+    }
+
     if (isMe) existing.isCurrentUser = true
   })
 
@@ -242,6 +273,7 @@ export default function Index() {
           name: user.name || 'Meu Usuário',
           role: user.role || 'Vendedor',
           quotesCount: 0,
+          ordersCount: 0,
           commissionTotal: 0,
           totalVolume: 0,
           isCurrentUser: true,
@@ -249,11 +281,10 @@ export default function Index() {
       ]
     }
   } else {
-    // Admin: exibe vendedores que emitiram propostas ou comissionamento no mês ou usuários cadastrados
-    // Remove entradas sem movimentação apenas se houver mais de 5, senão exibe todos
+    // Admin: exibe vendedores que emitiram propostas, geraram pedidos ou comissionamento no mês
     if (sellersCommissionList.length > 8) {
       sellersCommissionList = sellersCommissionList.filter(
-        (s) => s.quotesCount > 0 || s.commissionTotal > 0,
+        (s) => s.quotesCount > 0 || s.ordersCount > 0 || s.commissionTotal > 0,
       )
     }
   }
@@ -262,6 +293,7 @@ export default function Index() {
   sellersCommissionList.sort((a, b) => b.commissionTotal - a.commissionTotal)
 
   const totalCommissionsMonth = sellersCommissionList.reduce((sum, s) => sum + s.commissionTotal, 0)
+  const totalOrdersMonth = sellersCommissionList.reduce((sum, s) => sum + s.ordersCount, 0)
   const totalQuotesMonth = sellersCommissionList.reduce((sum, s) => sum + s.quotesCount, 0)
 
   // Cores de status
@@ -376,22 +408,31 @@ export default function Index() {
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
                 {isAdmin
-                  ? 'Total acumulado por vendedor em propostas emitidas no mês atual (base de produtos comissionáveis)'
-                  : 'Seu resumo comissionável acumulado no mês corrente'}
+                  ? 'Comissões acumuladas sobre orçamentos com pedidos gerados no mês atual (base de produtos comissionáveis)'
+                  : 'Sua comissão a receber sobre orçamentos que já geraram pedido neste mês'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 bg-[#2C2C2E] px-4 py-2.5 rounded-xl border border-slate-700/60 shrink-0 self-start sm:self-auto">
+          <div className="flex items-center gap-4 bg-[#2C2C2E] px-4 py-2.5 rounded-xl border border-slate-700/60 shrink-0 self-start sm:self-auto flex-wrap sm:flex-nowrap">
             <div>
               <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
-                {isAdmin ? 'Total Comissões da Equipe' : 'Minha Comissão Prevista'}
+                {isAdmin ? 'Total Comissões da Equipe' : 'Minha Comissão a Receber'}
               </span>
               <span className="font-mono text-lg sm:text-xl font-extrabold text-[#F08A24]">
                 {formatCurrencyBRL(totalCommissionsMonth)}
               </span>
             </div>
-            <div className="h-8 w-px bg-slate-700" />
+            <div className="h-8 w-px bg-slate-700 hidden sm:block" />
+            <div>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
+                Pedidos Gerados
+              </span>
+              <span className="font-mono text-lg sm:text-xl font-extrabold text-emerald-400">
+                {totalOrdersMonth}
+              </span>
+            </div>
+            <div className="h-8 w-px bg-slate-700 hidden sm:block" />
             <div>
               <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
                 Propostas do Mês
@@ -410,15 +451,17 @@ export default function Index() {
                 <tr>
                   <th className="py-3 px-5 sm:px-6">Vendedor</th>
                   <th className="py-3 px-4 text-center">Propostas no Mês</th>
-                  <th className="py-3 px-4 text-right">Volume Emitido</th>
-                  <th className="py-3 px-5 sm:px-6 text-right">Comissão Acumulada</th>
+                  <th className="py-3 px-4 text-center">Pedidos Gerados</th>
+                  <th className="py-3 px-4 text-right">Volume Faturado</th>
+                  <th className="py-3 px-5 sm:px-6 text-right">Comissão a Receber</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80">
                 {sellersCommissionList.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-8 text-center text-xs text-slate-500">
-                      Nenhum orçamento emitido no mês de {monthNames[now.getMonth()]}.
+                    <td colSpan={5} className="py-8 text-center text-xs text-slate-500">
+                      Nenhuma proposta ou movimentação registrada no mês de{' '}
+                      {monthNames[now.getMonth()]}.
                     </td>
                   </tr>
                 ) : (
@@ -456,9 +499,20 @@ export default function Index() {
                       </td>
 
                       <td className="py-3.5 px-4 text-center">
-                        <span className="font-mono font-bold text-slate-200 bg-[#262628] px-2.5 py-1 rounded-lg border border-slate-700/80">
-                          {seller.quotesCount}{' '}
-                          {seller.quotesCount === 1 ? 'orçamento' : 'orçamentos'}
+                        <span className="font-mono font-semibold text-slate-300 bg-[#262628] px-2.5 py-1 rounded-lg border border-slate-700/80">
+                          {seller.quotesCount} {seller.quotesCount === 1 ? 'proposta' : 'propostas'}
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-center">
+                        <span
+                          className={`font-mono font-bold px-2.5 py-1 rounded-lg border ${
+                            seller.ordersCount > 0
+                              ? 'text-emerald-300 bg-emerald-950/40 border-emerald-800/60'
+                              : 'text-slate-500 bg-[#262628] border-slate-700/60'
+                          }`}
+                        >
+                          {seller.ordersCount} {seller.ordersCount === 1 ? 'pedido' : 'pedidos'}
                         </span>
                       </td>
 
@@ -481,8 +535,8 @@ export default function Index() {
             <div className="flex items-center gap-2">
               <span className="h-1.5 w-1.5 rounded-full bg-[#F08A24]" />
               <span>
-                Cálculo: (base de produtos comissionáveis &minus; desconto proporcional) &times; %
-                comissão do orçamento.
+                Regra ativa: a comissão e o volume faturado são computados exclusivamente após o
+                orçamento gerar pedido.
               </span>
             </div>
             {!isAdmin && (

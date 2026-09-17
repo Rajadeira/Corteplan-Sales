@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2E2E30" />
+      <stop offset="100%" stop-color="#1F1F21" />
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="50%" stop-color="#F08A24" />
+      <stop offset="100%" stop-color="#E66812" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.4" />
+    </filter>
+  </defs>
+
+  <!-- Fundo Grafite arredondado -->
+  <rect width="192" height="192" rx="42" fill="url(#bgGrad)" />
+
+  <!-- Moldura externa sutil -->
+  <rect x="3" y="3" width="186" height="186" rx="39" fill="none" stroke="#3E3E42" stroke-width="2" opacity="0.6" />
+
+  <!-- Ícone central estilizado da Corteplan -->
+  <g transform="translate(16, 16)" filter="url(#shadow)">
+    <!-- Parênteses / moldura angular esquerda característica do logo Corteplan -->
+    <path d="M 44 32 L 28 32 C 22 32 18 36 18 42 L 18 118 C 18 124 22 128 28 128 L 44 128" 
+          fill="none" stroke="url(#orangeGrad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Parênteses / moldura angular direita -->
+    <path d="M 116 32 L 132 32 C 138 32 142 36 142 42 L 142 118 C 142 124 138 128 132 128 L 116 128" 
+          fill="none" stroke="url(#orangeGrad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+
+    <!-- Letra "C" robusta e chanfrada da Corteplan -->
+    <path d="M 102 52 
+             C 96 46 87 42 76 42 
+             C 57 42 44 58 44 80 
+             C 44 102 57 118 76 118 
+             C 87 118 96 114 102 108 
+             L 102 94 
+             C 97 99 90 102 82 102 
+             C 68 102 60 91 60 80 
+             C 60 69 68 58 82 58 
+             C 90 58 97 61 102 66 
+             Z" 
+          fill="#FFFFFF" />
+
+    <!-- Detalhe moderno em corte laranja -->
+    <rect x="76" y="74" width="28" height="12" rx="4" fill="url(#orangeGrad)" />
+  </g>
+</svg>

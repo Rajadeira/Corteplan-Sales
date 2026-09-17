@@ -16,6 +16,7 @@ import {
   ExternalLink,
   Package,
   Settings,
+  Download,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { clientService } from '@/services/clients'
@@ -58,6 +59,50 @@ export default function Layout() {
   // Sidebar collapse state
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // PWA beforeinstallprompt state
+  interface BeforeInstallPromptEvent extends Event {
+    prompt: () => Promise<void>
+    userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+  }
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+  const [isInstallable, setIsInstallable] = useState(false)
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault()
+      setDeferredPrompt(e as BeforeInstallPromptEvent)
+      setIsInstallable(true)
+    }
+
+    const handleAppInstalled = () => {
+      setIsInstallable(false)
+      setDeferredPrompt(null)
+      toast.success('Aplicativo Corteplan instalado com sucesso!')
+    }
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    window.addEventListener('appinstalled', handleAppInstalled)
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', handleAppInstalled)
+    }
+  }, [])
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return
+    try {
+      await deferredPrompt.prompt()
+      const choice = await deferredPrompt.userChoice
+      if (choice.outcome === 'accepted') {
+        setIsInstallable(false)
+        setDeferredPrompt(null)
+      }
+    } catch (err) {
+      console.warn('Erro ao disparar prompt de instalação:', err)
+    }
+  }
 
   // Global search state
   const [searchQuery, setSearchQuery] = useState('')
@@ -381,6 +426,23 @@ export default function Layout() {
                 </Link>
               )
             })}
+
+          {/* Botão discreto no menu lateral quando instalável como PWA */}
+          {isInstallable && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleInstallApp}
+                title={collapsed ? 'Instalar aplicativo' : undefined}
+                className={`w-full flex items-center gap-3.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-all ${
+                  collapsed ? 'justify-center px-0' : ''
+                }`}
+              >
+                <Download className="h-4 w-4 text-[#F08A24] shrink-0" />
+                {!collapsed && <span>Instalar aplicativo</span>}
+              </button>
+            </div>
+          )}
         </nav>
 
         {/* Collapse Toggle (Desktop only) */}
@@ -736,6 +798,18 @@ export default function Layout() {
                     >
                       <Settings className="mr-2 h-4 w-4 text-slate-500" />
                       <span>Configurações</span>
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {isInstallable && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={handleInstallApp}
+                      className="cursor-pointer text-[#E66812] font-semibold focus:text-[#E66812]"
+                    >
+                      <Download className="mr-2 h-4 w-4 text-[#F08A24]" />
+                      <span>Instalar aplicativo</span>
                     </DropdownMenuItem>
                   </>
                 )}
