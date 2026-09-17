@@ -25,18 +25,22 @@ export interface ClientRecord extends RecordModel {
 
 export type ItemCategory =
   | 'Mobiliário'
+  | 'Display'
   | 'Comunicação Visual'
-  | 'Serralheria'
-  | 'Vidraçaria'
+  | 'Totem'
+  | 'Quiosque'
+  | 'Cenografia'
   | 'Frete'
   | 'Instalação'
   | 'Outros'
 
 export const ITEM_CATEGORIES: ItemCategory[] = [
   'Mobiliário',
+  'Display',
   'Comunicação Visual',
-  'Serralheria',
-  'Vidraçaria',
+  'Totem',
+  'Quiosque',
+  'Cenografia',
   'Frete',
   'Instalação',
   'Outros',
@@ -216,11 +220,38 @@ export interface BlockStyleConfig {
   align?: 'left' | 'center' | 'right'
 }
 
+export interface PrintSettingsConfig {
+  marginTopMm: number // default: 6.5 (ou 10)
+  marginBottomMm: number // default: 18 (ou 91.5 de área útil / rodapé)
+  marginLeftMm: number // default: 10
+  marginRightMm: number // default: 10
+  scalePercent: number // default: 100
+  breaksBefore: Partial<Record<ProposalBlockId, boolean>> // quebrar página antes deste bloco
+  showLetterhead: boolean // cabeçalho da proposta
+  showPageNumbers?: boolean
+}
+
+export const DEFAULT_PRINT_SETTINGS: PrintSettingsConfig = {
+  marginTopMm: 6.5,
+  marginBottomMm: 18,
+  marginLeftMm: 10,
+  marginRightMm: 10,
+  scalePercent: 100,
+  breaksBefore: {
+    conditions_summary: false,
+    installments: false,
+    signature: false,
+  },
+  showLetterhead: true,
+  showPageNumbers: true,
+}
+
 export interface ProposalLayoutConfig {
   version: number
   page1Order: ProposalBlockId[]
   page2Order: ProposalBlockId[]
   blocks: Partial<Record<ProposalBlockId, BlockStyleConfig>>
+  printSettings?: PrintSettingsConfig
   updatedAt?: string
 }
 

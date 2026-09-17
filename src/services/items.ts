@@ -1,4 +1,4 @@
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 import type { ItemCatalogRecord } from '@/types'
 
 export type CreateItemData = Omit<

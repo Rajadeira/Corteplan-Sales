@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17T09:47:12.669Z",
+  "generatedAt": "2026-09-17T10:10:18.841Z",
   "collections": [
     {
       "name": "users",
@@ -531,20 +531,141 @@
         "update": "@request.auth.id != \"\"",
         "delete": "@request.auth.id != \"\""
       },
-      "fields": [],
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Mobiliário",
+            "Display",
+            "Comunicação Visual",
+            "Totem",
+            "Quiosque",
+            "Cenografia",
+            "Frete",
+            "Instalação",
+            "Outros"
+          ]
+        },
+        {
+          "name": "unit",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["un", "m²", "m", "kit", "hora"]
+        },
+        {
+          "name": "unit_price",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "default_tax",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "technical_description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "image",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
       "indexes": []
     },
     {
       "name": "app_settings",
       "type": "base",
       "apiRules": {
-        "list": null,
-        "view": null,
-        "create": "@request.auth.role = \"Administrador\"",
-        "update": null,
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.id != \"\"",
+        "update": "@request.auth.id != \"\"",
         "delete": "@request.auth.role = \"Administrador\""
       },
-      "fields": [],
+      "fields": [
+        {
+          "name": "setting_key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "value",
+          "type": "json",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
       "indexes": []
     }
   ]

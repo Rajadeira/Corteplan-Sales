@@ -21,6 +21,8 @@ import {
   DEFAULT_PAGE2_ORDER,
   LayoutBlockWrapper,
 } from '@/components/ProposalLayoutEditor'
+import PrintSettingsModal, { applyDynamicPrintStyles } from '@/components/PrintSettingsModal'
+import { DEFAULT_PRINT_SETTINGS, PrintSettingsConfig } from '@/types'
 import {
   formatCurrencyBRL,
   formatDateBR,
@@ -54,12 +56,15 @@ export default function OrderDetail() {
   const [loading, setLoading] = useState(true)
   const [statusLoading, setStatusLoading] = useState(false)
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
+  const [savingLayout, setSavingLayout] = useState(false)
 
   const [layoutConfig, setLayoutConfig] = useState<ProposalLayoutConfig>({
     version: 1,
     page1Order: DEFAULT_PAGE1_ORDER,
     page2Order: DEFAULT_PAGE2_ORDER,
     blocks: {},
+    printSettings: DEFAULT_PRINT_SETTINGS,
   })
 
   const loadOrder = async () => {
@@ -73,6 +78,10 @@ export default function OrderDetail() {
           page1Order: data.layout_config.page1Order || DEFAULT_PAGE1_ORDER,
           page2Order: data.layout_config.page2Order || DEFAULT_PAGE2_ORDER,
           blocks: data.layout_config.blocks || {},
+          printSettings: {
+            ...DEFAULT_PRINT_SETTINGS,
+            ...(data.layout_config.printSettings || {}),
+          },
         })
       }
     } catch (err) {
@@ -87,15 +96,60 @@ export default function OrderDetail() {
     loadOrder()
   }, [id])
 
+  // Aplica estilos de impressão dinâmicos se configurados
+  useEffect(() => {
+    if (layoutConfig.printSettings) {
+      applyDynamicPrintStyles(layoutConfig.printSettings)
+    }
+  }, [layoutConfig.printSettings])
+
   // Dispara print se ?print=true estiver na URL
   useEffect(() => {
     if (searchParams.get('print') === 'true' && order && !loading) {
+      if (layoutConfig.printSettings) {
+        applyDynamicPrintStyles(layoutConfig.printSettings)
+      }
       const timer = setTimeout(() => {
         window.print()
       }, 500)
       return () => clearTimeout(timer)
     }
-  }, [searchParams, order, loading])
+  }, [searchParams, order, loading, layoutConfig.printSettings])
+
+  const handleApplyAndPrint = (newSettings: PrintSettingsConfig) => {
+    setLayoutConfig((prev) => ({
+      ...prev,
+      printSettings: newSettings,
+    }))
+    setIsPrintModalOpen(false)
+    setTimeout(() => {
+      window.print()
+    }, 200)
+  }
+
+  const handleSavePrintSettings = async (newSettings: PrintSettingsConfig) => {
+    if (!id) return
+    setSavingLayout(true)
+    try {
+      const toSave: ProposalLayoutConfig = {
+        ...layoutConfig,
+        printSettings: newSettings,
+        version: 1,
+        updatedAt: new Date().toISOString(),
+      }
+      const updated = await orderService.update(id, {
+        layout_config: toSave,
+      })
+      setOrder(updated)
+      setLayoutConfig(toSave)
+      toast.success('Configurações de impressão salvas no pedido!')
+    } catch (err) {
+      console.error('Erro ao salvar layout do pedido:', err)
+      toast.error('Erro ao salvar as configurações de impressão.')
+    } finally {
+      setSavingLayout(false)
+    }
+  }
 
   const handleUpdateStatus = async (newStatus: OrderStatus) => {
     if (!id || !order) return
@@ -268,7 +322,7 @@ export default function OrderDetail() {
         <div className="flex items-center gap-3 self-start md:self-auto shrink-0 flex-wrap">
           {isAllowedToManage && (
             <Button
-              onClick={() => window.print()}
+              onClick={() => setIsPrintModalOpen(true)}
               className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
             >
               <Printer className="h-4 w-4 mr-1.5 text-[#F08A24]" />
@@ -362,6 +416,7 @@ export default function OrderDetail() {
                 return (
                   <div
                     key={blockId}
+                    data-block-id={blockId}
                     className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-6 border-b border-slate-200"
                   >
                     <div className="flex items-center">
@@ -385,6 +440,7 @@ export default function OrderDetail() {
                 return (
                   <div
                     key={blockId}
+                    data-block-id={blockId}
                     className="pt-2 pb-2 space-y-0.5 text-xs text-slate-700 max-w-xl"
                   >
                     <div className="font-bold text-slate-900 text-sm tracking-tight uppercase">
@@ -436,6 +492,7 @@ export default function OrderDetail() {
                 return (
                   <div
                     key={blockId}
+                    data-block-id={blockId}
                     className="pt-1 pb-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100"
                   >
                     <div>
@@ -459,7 +516,11 @@ export default function OrderDetail() {
 
               if (blockId === 'intro') {
                 return (
-                  <div key={blockId} className="py-1 text-xs text-slate-700">
+                  <div
+                    key={blockId}
+                    data-block-id={blockId}
+                    className="py-1 text-xs text-slate-700"
+                  >
                     <p>
                       Confirmamos o pedido de fornecimento com itens, quantidades, especificações e
                       condições comerciais discriminados abaixo:
@@ -470,7 +531,7 @@ export default function OrderDetail() {
 
               if (blockId === 'items') {
                 return (
-                  <div key={blockId} className="overflow-x-auto my-2">
+                  <div key={blockId} data-block-id={blockId} className="overflow-x-auto my-2">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="border-t border-b border-slate-300 bg-slate-50/60 font-bold text-slate-900">
@@ -551,6 +612,7 @@ export default function OrderDetail() {
                 return (
                   <div
                     key={blockId}
+                    data-block-id={blockId}
                     className="pt-4 border-t border-slate-300 grid grid-cols-1 md:grid-cols-12 gap-6 items-start"
                   >
                     {/* Observações do Pedido */}
@@ -646,6 +708,7 @@ export default function OrderDetail() {
                 return (
                   <div
                     key={blockId}
+                    data-block-id={blockId}
                     className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-300 text-xs"
                   >
                     <div className="space-y-1">
@@ -675,7 +738,7 @@ export default function OrderDetail() {
 
               if (blockId === 'installments') {
                 return (
-                  <div key={blockId} className="my-3">
+                  <div key={blockId} data-block-id={blockId} className="my-3">
                     <div className="font-bold text-slate-900 uppercase tracking-wide text-[11px] mb-2">
                       Programação de Parcelas / Pagamento do Pedido
                     </div>
@@ -717,6 +780,7 @@ export default function OrderDetail() {
                 return (
                   <div
                     key={blockId}
+                    data-block-id={blockId}
                     className="pt-8 mt-6 border-t border-slate-300 print-avoid-break"
                   >
                     <div className="max-w-md mx-auto space-y-6 text-center text-xs text-slate-700">
@@ -774,6 +838,18 @@ export default function OrderDetail() {
           </footer>
         </div>
       </div>
+
+      {/* Modal de Configuração de Impressão e PDF estilo Calcme */}
+      <PrintSettingsModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        currentSettings={layoutConfig.printSettings}
+        layoutConfig={layoutConfig}
+        documentTitle={`Pedido Nº ${order.order_number} - Corteplan`}
+        onApplyAndPrint={handleApplyAndPrint}
+        onSaveSettings={handleSavePrintSettings}
+        isSaving={savingLayout}
+      />
 
       {/* Linha do Tempo de Status do Pedido (Apenas na tela) */}
       <div className="print:hidden bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">

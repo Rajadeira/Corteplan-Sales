@@ -186,6 +186,7 @@ export function LayoutBlockWrapper({
   if (!isEditMode) {
     return (
       <div
+        data-block-id={id}
         style={computedStyle}
         className="print-avoid-break print:!outline-none print:!bg-transparent"
       >
@@ -198,6 +199,7 @@ export function LayoutBlockWrapper({
 
   return (
     <div
+      data-block-id={id}
       onClick={(e) => {
         e.stopPropagation()
         onSelect(id)

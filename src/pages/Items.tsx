@@ -139,45 +139,49 @@ export default function Items() {
 
     try {
       setSubmitting(true)
+      const payload: any = {
+        code: formData.code.trim() || undefined,
+        description: formData.description.trim(),
+        category: formData.category,
+        unit: formData.unit,
+        unit_price: Number(formData.unit_price) || 0,
+        default_tax: Number(formData.default_tax) || 0,
+        technical_description: formData.technical_description.trim() || undefined,
+        active: formData.active,
+      }
+
       if (editingItem) {
-        await itemService.update(editingItem.id, {
-          code: formData.code.trim(),
-          description: formData.description.trim(),
-          category: formData.category,
-          unit: formData.unit,
-          unit_price: Number(formData.unit_price) || 0,
-          default_tax: Number(formData.default_tax) || 0,
-          technical_description: formData.technical_description.trim(),
-          active: formData.active,
-        })
+        await itemService.update(editingItem.id, payload)
         toast({
           title: 'Item atualizado',
           description: 'O item do catálogo foi atualizado com sucesso.',
         })
       } else {
-        await itemService.create({
-          code: formData.code.trim(),
-          description: formData.description.trim(),
-          category: formData.category,
-          unit: formData.unit,
-          unit_price: Number(formData.unit_price) || 0,
-          default_tax: Number(formData.default_tax) || 0,
-          technical_description: formData.technical_description.trim(),
-          active: formData.active,
-          created_by: user?.id,
-        })
+        if (user?.id) {
+          payload.created_by = user.id
+        }
+        await itemService.create(payload)
         toast({
           title: 'Item cadastrado',
           description: 'O novo item foi adicionado ao catálogo com sucesso.',
         })
       }
       setIsModalOpen(false)
-      loadItems()
+      await loadItems()
     } catch (err: any) {
       console.error('Erro ao salvar item:', err)
+      const detail =
+        err.data?.message ||
+        (err.data?.data
+          ? Object.entries(err.data.data)
+              .map(([k, v]: any) => `${k}: ${v.message}`)
+              .join(', ')
+          : null) ||
+        err.message ||
+        'Ocorreu um erro ao salvar o item.'
       toast({
-        title: 'Erro ao salvar',
-        description: err.message || 'Ocorreu um erro ao salvar o item.',
+        title: 'Erro ao salvar item',
+        description: detail,
         variant: 'destructive',
       })
     } finally {

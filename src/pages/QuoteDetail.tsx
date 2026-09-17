@@ -32,6 +32,8 @@ import {
   DEFAULT_PAGE2_ORDER,
   DEFAULT_BLOCK_STYLE,
 } from '@/components/ProposalLayoutEditor'
+import PrintSettingsModal, { applyDynamicPrintStyles } from '@/components/PrintSettingsModal'
+import { DEFAULT_PRINT_SETTINGS, PrintSettingsConfig } from '@/types'
 import {
   formatCurrencyBRL,
   formatDateBR,
@@ -61,11 +63,13 @@ export default function QuoteDetail() {
   // Estado do Modo de Diagramação / Ajuste Manual de Layout (estilo CorelDRAW)
   const [isLayoutEditMode, setIsLayoutEditMode] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<ProposalBlockId | null>(null)
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
   const [layoutConfig, setLayoutConfig] = useState<ProposalLayoutConfig>({
     version: 1,
     page1Order: DEFAULT_PAGE1_ORDER,
     page2Order: DEFAULT_PAGE2_ORDER,
     blocks: {},
+    printSettings: DEFAULT_PRINT_SETTINGS,
   })
   const [savingLayout, setSavingLayout] = useState(false)
 
@@ -80,6 +84,10 @@ export default function QuoteDetail() {
           page1Order: data.layout_config.page1Order || DEFAULT_PAGE1_ORDER,
           page2Order: data.layout_config.page2Order || DEFAULT_PAGE2_ORDER,
           blocks: data.layout_config.blocks || {},
+          printSettings: {
+            ...DEFAULT_PRINT_SETTINGS,
+            ...(data.layout_config.printSettings || {}),
+          },
         })
       }
     } catch (err) {
@@ -153,12 +161,13 @@ export default function QuoteDetail() {
     })
   }
 
-  const handleSaveLayout = async () => {
+  const handleSaveLayout = async (customConfig?: Partial<ProposalLayoutConfig>) => {
     if (!id) return
     setSavingLayout(true)
     try {
       const toSave: ProposalLayoutConfig = {
         ...layoutConfig,
+        ...customConfig,
         version: 1,
         updatedAt: new Date().toISOString(),
       }
@@ -166,28 +175,56 @@ export default function QuoteDetail() {
         layout_config: toSave,
       })
       setQuote(updated)
-      toast.success('Layout personalizado salvo com sucesso!')
+      setLayoutConfig(toSave)
+      toast.success('Configurações de impressão salvas no orçamento!')
     } catch (err) {
       console.error('Erro ao salvar layout:', err)
-      toast.error('Erro ao salvar o layout diagramado.')
+      toast.error('Erro ao salvar as configurações de impressão.')
     } finally {
       setSavingLayout(false)
     }
+  }
+
+  const handleApplyAndPrint = (newSettings: PrintSettingsConfig) => {
+    setLayoutConfig((prev) => ({
+      ...prev,
+      printSettings: newSettings,
+    }))
+    setIsPrintModalOpen(false)
+    setTimeout(() => {
+      window.print()
+    }, 200)
+  }
+
+  const handleSavePrintSettings = async (newSettings: PrintSettingsConfig) => {
+    await handleSaveLayout({
+      printSettings: newSettings,
+    })
   }
 
   useEffect(() => {
     loadQuote()
   }, [id])
 
+  // Aplica estilos de impressão dinâmicos se configurados
+  useEffect(() => {
+    if (layoutConfig.printSettings) {
+      applyDynamicPrintStyles(layoutConfig.printSettings)
+    }
+  }, [layoutConfig.printSettings])
+
   // Trigger print se ?print=true estiver na URL
   useEffect(() => {
     if (searchParams.get('print') === 'true' && quote && !loading) {
+      if (layoutConfig.printSettings) {
+        applyDynamicPrintStyles(layoutConfig.printSettings)
+      }
       const timer = setTimeout(() => {
         window.print()
       }, 500)
       return () => clearTimeout(timer)
     }
-  }, [searchParams, quote, loading])
+  }, [searchParams, quote, loading, layoutConfig.printSettings])
 
   const handleGenerateOrder = async () => {
     if (!quote) return
@@ -441,7 +478,7 @@ export default function QuoteDetail() {
               </Button>
 
               <Button
-                onClick={() => window.print()}
+                onClick={() => setIsPrintModalOpen(true)}
                 className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
               >
                 <Printer className="h-4 w-4 mr-1.5 text-[#F08A24]" />
@@ -1084,6 +1121,18 @@ export default function QuoteDetail() {
           </footer>
         </div>
       </div>
+
+      {/* Modal de Configuração de Impressão e PDF estilo Calcme */}
+      <PrintSettingsModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        currentSettings={layoutConfig.printSettings}
+        layoutConfig={layoutConfig}
+        documentTitle={`Proposta Nº ${quote.quote_number} - Corteplan`}
+        onApplyAndPrint={handleApplyAndPrint}
+        onSaveSettings={handleSavePrintSettings}
+        isSaving={savingLayout}
+      />
 
       {/* Linha do Tempo de Status (Apenas na tela, escondida na impressão) */}
       <div className="print:hidden bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
