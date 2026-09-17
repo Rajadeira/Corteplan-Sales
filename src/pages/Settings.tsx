@@ -34,8 +34,11 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [savingCompany, setSavingCompany] = useState(false)
   const [savingTaxes, setSavingTaxes] = useState(false)
+  const [savingSeq, setSavingSeq] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [lastQuoteNum, setLastQuoteNum] = useState<number>(140)
+  const [lastOrderNum, setLastOrderNum] = useState<number>(0)
 
   // Company Form
   const [company, setCompany] = useState<CompanySettings>({
@@ -68,12 +71,20 @@ export default function SettingsPage() {
     async function loadData() {
       try {
         setLoading(true)
-        const [compData, taxData] = await Promise.all([
+        const [compData, taxData, quoteSeqVal, orderSeqVal] = await Promise.all([
           settingsService.getCompanySettings(),
           settingsService.getTaxSettings(),
+          settingsService.getByKey<number>('last_quote_number'),
+          settingsService.getByKey<number>('last_order_number'),
         ])
         if (compData) setCompany(compData)
         if (taxData) setTaxes(taxData)
+        if (quoteSeqVal !== null && quoteSeqVal !== undefined) {
+          setLastQuoteNum(Number(quoteSeqVal))
+        }
+        if (orderSeqVal !== null && orderSeqVal !== undefined) {
+          setLastOrderNum(Number(orderSeqVal))
+        }
       } catch (err) {
         console.error('Erro ao carregar configurações:', err)
       } finally {
@@ -101,6 +112,38 @@ export default function SettingsPage() {
       })
     } finally {
       setSavingCompany(false)
+    }
+  }
+
+  const handleSaveSequences = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!isAdmin) return
+    try {
+      setSavingSeq(true)
+      await Promise.all([
+        settingsService.setByKey(
+          'last_quote_number',
+          lastQuoteNum,
+          'Último número de orçamento utilizado (o próximo será este + 1)',
+        ),
+        settingsService.setByKey(
+          'last_order_number',
+          lastOrderNum,
+          'Último número de pedido utilizado (o próximo será este + 1)',
+        ),
+      ])
+      toast({
+        title: 'Sequência numérica atualizada',
+        description: `Próximo orçamento será ORÇ-${String(lastQuoteNum + 1).padStart(3, '0')} e próximo pedido será PED-${String(lastOrderNum + 1).padStart(3, '0')}.`,
+      })
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar sequenciais',
+        description: err.message || 'Falha ao salvar numeração sequencial.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingSeq(false)
     }
   }
 
@@ -270,6 +313,10 @@ export default function SettingsPage() {
           <TabsTrigger value="impostos" className="flex items-center gap-2">
             <Receipt className="h-4 w-4" />
             Impostos & Condições Padrão
+          </TabsTrigger>
+          <TabsTrigger value="sequenciais" className="flex items-center gap-2">
+            <FileCheck className="h-4 w-4" />
+            Numeração Sequencial
           </TabsTrigger>
           <TabsTrigger value="backup" className="flex items-center gap-2">
             <Database className="h-4 w-4" />
@@ -567,7 +614,98 @@ export default function SettingsPage() {
           </div>
         </TabsContent>
 
-        {/* TAB 3: BACKUP & SEGURANÇA */}
+        {/* TAB 3: NUMERAÇÃO SEQUENCIAL */}
+        <TabsContent value="sequenciais">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-6">
+              <div className="p-2.5 bg-orange-50 text-[#F08A24] rounded-lg">
+                <FileCheck className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-900 text-base">
+                  Numeração Sequencial de Documentos
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Defina o último número emitido no sistema anterior para manter a continuidade
+                  histórica da Corteplan.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveSequences} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Sequencial de Orçamentos */}
+                <div className="space-y-4 bg-slate-50/70 p-5 rounded-xl border border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-slate-800">Orçamentos (ORÇ-XXX)</h4>
+                    <Badge
+                      variant="outline"
+                      className="border-orange-500 text-orange-600 bg-orange-50"
+                    >
+                      Próximo: ORÇ-{String(lastQuoteNum + 1).padStart(3, '0')}
+                    </Badge>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="last_quote_number">Último número de orçamento utilizado</Label>
+                    <Input
+                      id="last_quote_number"
+                      type="number"
+                      min="0"
+                      value={lastQuoteNum}
+                      onChange={(e) => setLastQuoteNum(parseInt(e.target.value, 10) || 0)}
+                      required
+                    />
+                    <p className="text-xs text-slate-500">
+                      O sistema antigo encerrou no orçamento <strong>140</strong>. O próximo
+                      orçamento criado receberá o número <strong>{lastQuoteNum + 1}</strong> (ORÇ-
+                      {String(lastQuoteNum + 1).padStart(3, '0')}).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Sequencial de Pedidos */}
+                <div className="space-y-4 bg-slate-50/70 p-5 rounded-xl border border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-slate-800">
+                      Pedidos de Venda (PED-XXX)
+                    </h4>
+                    <Badge variant="outline" className="border-blue-500 text-blue-600 bg-blue-50">
+                      Próximo: PED-{String(lastOrderNum + 1).padStart(3, '0')}
+                    </Badge>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="last_order_number">Último número de pedido utilizado</Label>
+                    <Input
+                      id="last_order_number"
+                      type="number"
+                      min="0"
+                      value={lastOrderNum}
+                      onChange={(e) => setLastOrderNum(parseInt(e.target.value, 10) || 0)}
+                      required
+                    />
+                    <p className="text-xs text-slate-500">
+                      Se definido como 0, o primeiro pedido gerado será <strong>PED-001</strong>.
+                      Caso queira continuar de uma numeração anterior, altere este valor.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={savingSeq}
+                  className="bg-[#3A3A3C] hover:bg-[#2E2E30] text-white gap-2"
+                >
+                  <Save className="h-4 w-4 text-[#F08A24]" />
+                  {savingSeq ? 'Salvando...' : 'Salvar Numeração Sequencial'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </TabsContent>
+
+        {/* TAB 4: BACKUP & SEGURANÇA */}
         <TabsContent value="backup">
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 space-y-6">
             <div className="flex items-center gap-3 border-b border-slate-100 pb-4">

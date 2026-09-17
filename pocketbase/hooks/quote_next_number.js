@@ -3,15 +3,39 @@ routerAdd(
   'GET',
   '/backend/v1/next-quote-number',
   (e) => {
-    let nextNum = 1
+    let nextNum = 141
+
+    // 1. Verificar configuração no app_settings (padrão 140 para o último orçamento do sistema antigo)
+    let minBase = 140
+    try {
+      const settingRec = $app.findFirstRecordByData(
+        'app_settings',
+        'setting_key',
+        'last_quote_number',
+      )
+      if (settingRec) {
+        const val = settingRec.get('value')
+        const parsed = parseInt(val, 10)
+        if (!isNaN(parsed) && parsed >= 0) {
+          minBase = parsed
+        }
+      }
+    } catch (_) {
+      minBase = 140
+    }
+
+    // 2. Verificar se há orçamentos já cadastrados com numeração maior
     try {
       const records = $app.findRecordsByFilter('quotes', '', '-quote_number', 1, 0)
       if (records && records.length > 0) {
         const highest = records[0].getInt('quote_number')
-        nextNum = highest + 1
+        const candidate = highest > minBase ? highest : minBase
+        nextNum = candidate + 1
+      } else {
+        nextNum = minBase + 1
       }
     } catch (_) {
-      nextNum = 1
+      nextNum = minBase + 1
     }
 
     const padded = String(nextNum).padStart(3, '0')

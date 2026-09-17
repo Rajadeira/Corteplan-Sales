@@ -96,13 +96,30 @@ export const quoteService = {
       // fallback to querying highest quote_number directly
     }
 
+    // Fallback: check app_settings for last_quote_number (offset 140 from old app)
+    let minBase = 140
+    try {
+      const settingRec = await pb
+        .collection('app_settings')
+        .getFirstListItem<{ value: number | string }>('setting_key = "last_quote_number"')
+      if (settingRec && settingRec.value !== undefined) {
+        const parsed = parseInt(String(settingRec.value), 10)
+        if (!isNaN(parsed) && parsed >= 0) {
+          minBase = parsed
+        }
+      }
+    } catch {
+      minBase = 140
+    }
+
     try {
       const records = await pb.collection('quotes').getList<QuoteRecord>(1, 1, {
         sort: '-quote_number',
       })
       if (records.items.length > 0) {
         const highest = records.items[0].quote_number || 0
-        const next = highest + 1
+        const candidate = highest > minBase ? highest : minBase
+        const next = candidate + 1
         return {
           nextNumber: next,
           formatted: `ORÇ-${String(next).padStart(3, '0')}`,
@@ -112,7 +129,8 @@ export const quoteService = {
       /* intentionally ignored */
     }
 
-    return { nextNumber: 1, formatted: 'ORÇ-001' }
+    const next = minBase + 1
+    return { nextNumber: next, formatted: `ORÇ-${String(next).padStart(3, '0')}` }
   },
 
   async create(data: CreateQuoteData, userName: string = 'Usuário'): Promise<QuoteRecord> {

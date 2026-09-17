@@ -88,13 +88,30 @@ export const orderService = {
       /* intentionally ignored */
     }
 
+    // Fallback: check app_settings for last_order_number
+    let minBase = 0
+    try {
+      const settingRec = await pb
+        .collection('app_settings')
+        .getFirstListItem<{ value: number | string }>('setting_key = "last_order_number"')
+      if (settingRec && settingRec.value !== undefined) {
+        const parsed = parseInt(String(settingRec.value), 10)
+        if (!isNaN(parsed) && parsed >= 0) {
+          minBase = parsed
+        }
+      }
+    } catch {
+      minBase = 0
+    }
+
     try {
       const records = await pb.collection('orders').getList<OrderRecord>(1, 1, {
         sort: '-order_number',
       })
       if (records.items.length > 0) {
         const highest = records.items[0].order_number || 0
-        const next = highest + 1
+        const candidate = highest > minBase ? highest : minBase
+        const next = candidate + 1
         return {
           nextNumber: next,
           formatted: `PED-${String(next).padStart(3, '0')}`,
@@ -104,7 +121,8 @@ export const orderService = {
       /* fallback */
     }
 
-    return { nextNumber: 1, formatted: 'PED-001' }
+    const next = minBase + 1
+    return { nextNumber: next, formatted: `PED-${String(next).padStart(3, '0')}` }
   },
 
   async create(data: CreateOrderData, userName: string = 'Usuário'): Promise<OrderRecord> {
