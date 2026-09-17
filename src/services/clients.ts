@@ -9,6 +9,13 @@ export interface CreateClientData {
   address?: string
   city?: string
   notes?: string
+  document_type?: 'CNPJ' | 'CPF'
+  document_number?: string
+  trade_name?: string
+  contact_name?: string
+  zip_code?: string
+  neighborhood?: string
+  state?: string
 }
 
 export type UpdateClientData = Partial<CreateClientData>
@@ -42,7 +49,7 @@ export const clientService = {
     return pb
       .collection('clients')
       .getList<ClientRecord>(1, 10, {
-        filter: `name ~ '${clean}' || company ~ '${clean}' || email ~ '${clean}' || phone ~ '${clean}'`,
+        filter: `name ~ '${clean}' || company ~ '${clean}' || email ~ '${clean}' || phone ~ '${clean}' || document_number ~ '${clean}' || trade_name ~ '${clean}'`,
         sort: 'name',
       })
       .then((res) => res.items)

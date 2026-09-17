@@ -165,14 +165,14 @@ export default function Layout() {
 
       {/* Desktop / Mobile Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-[#0F172A] text-[#E2E8F0] shadow-xl transition-all duration-300 ease-in-out print:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-gradient-to-b from-[#2E2E30] to-[#3A3A3C] text-[#E2E8F0] shadow-xl border-r border-[#3E3E42]/60 transition-all duration-300 ease-in-out print:hidden ${
           collapsed ? 'w-20' : 'w-[280px]'
         } ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
       >
         {/* Brand / Logo */}
-        <div className="flex h-16 items-center justify-between px-4 border-b border-slate-800/80">
+        <div className="flex h-16 items-center justify-between px-4 border-b border-white/10">
           <Link to="/" className="flex items-center gap-3 overflow-hidden group">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#E66812] to-amber-600 text-white shadow-md shadow-orange-950/30 group-hover:scale-105 transition-transform duration-200 font-extrabold text-lg tracking-wider">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#E66812] to-amber-600 text-white shadow-md shadow-black/30 group-hover:scale-105 transition-transform duration-200 font-extrabold text-lg tracking-wider">
               C
             </div>
             {!collapsed && (
@@ -180,7 +180,7 @@ export default function Layout() {
                 <span className="font-bold text-white text-base tracking-wider font-sans">
                   CORTEPLAN
                 </span>
-                <span className="text-[11px] text-slate-400 font-medium tracking-wide uppercase">
+                <span className="text-[11px] text-slate-300 font-medium tracking-wide uppercase">
                   Gestão Comercial
                 </span>
               </div>
@@ -189,7 +189,7 @@ export default function Layout() {
           {/* Mobile close button */}
           <button
             type="button"
-            className="md:hidden text-slate-400 hover:text-white p-1.5 rounded-lg"
+            className="md:hidden text-slate-300 hover:text-white p-1.5 rounded-lg"
             onClick={() => setMobileOpen(false)}
           >
             <X className="h-5 w-5" />
@@ -221,13 +221,13 @@ export default function Layout() {
                     isActive &&
                     item.path === '/orcamentos' &&
                     !location.pathname.includes('/novo'))
-                    ? 'bg-[#3A3A3C] text-white shadow-sm shadow-black/30 border-l-4 border-[#F08A24] font-semibold'
-                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                    ? 'bg-white/15 text-white shadow-sm border-l-4 border-[#F08A24] font-semibold'
+                    : 'text-slate-200 hover:bg-white/10 hover:text-white'
                 } ${collapsed ? 'justify-center px-0' : ''}`}
               >
                 <Icon
                   className={`h-5 w-5 shrink-0 transition-transform duration-200 ${
-                    isActive ? 'text-[#F08A24]' : 'text-slate-400'
+                    isActive ? 'text-[#F08A24]' : 'text-slate-300'
                   }`}
                 />
                 {!collapsed && <span>{item.name}</span>}
@@ -237,11 +237,11 @@ export default function Layout() {
         </nav>
 
         {/* Collapse Toggle (Desktop only) */}
-        <div className="hidden md:flex px-3 py-2 border-t border-slate-800/60 justify-end">
+        <div className="hidden md:flex px-3 py-2 border-t border-white/10 justify-end">
           <button
             type="button"
             onClick={() => setCollapsed(!collapsed)}
-            className="flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="flex items-center justify-center h-8 w-8 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
             title={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
           >
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -249,13 +249,13 @@ export default function Layout() {
         </div>
 
         {/* User Card Footer */}
-        <div className="p-3 border-t border-slate-800/80 bg-slate-950/40">
+        <div className="p-3 border-t border-white/10 bg-black/20">
           <div
             className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} gap-2`}
           >
             <div className="flex items-center gap-3 min-w-0">
-              <Avatar className="h-9 w-9 ring-2 ring-slate-700 bg-gradient-to-br from-[#3A3A3C] to-slate-800 text-white font-bold text-xs shrink-0">
-                <AvatarFallback className="bg-slate-800 text-[#F08A24] font-bold">
+              <Avatar className="h-9 w-9 ring-2 ring-white/20 bg-[#252527] text-white font-bold text-xs shrink-0">
+                <AvatarFallback className="bg-[#252527] text-[#F08A24] font-bold">
                   {getInitials(user?.name)}
                 </AvatarFallback>
               </Avatar>
@@ -264,7 +264,7 @@ export default function Layout() {
                   <span className="text-xs font-semibold text-white truncate" title={user?.name}>
                     {user?.name || 'Administrador'}
                   </span>
-                  <span className="text-[11px] text-slate-400 truncate" title={user?.email}>
+                  <span className="text-[11px] text-slate-300 truncate" title={user?.email}>
                     {user?.email || 'admin@mobiliario.com.br'}
                   </span>
                 </div>
@@ -276,7 +276,7 @@ export default function Layout() {
                 variant="ghost"
                 size="icon"
                 onClick={logout}
-                className="h-8 w-8 text-slate-400 hover:text-red-400 hover:bg-slate-800/60 shrink-0"
+                className="h-8 w-8 text-slate-300 hover:text-red-400 hover:bg-white/10 shrink-0"
                 title="Sair do sistema"
               >
                 <LogOut className="h-4 w-4" />

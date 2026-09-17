@@ -74,7 +74,7 @@ export default function Login() {
           </div>
           <div>
             <span className="text-xl font-bold tracking-tight text-white block">
-              <span class="font-semibold">Corteplan Sales</span>
+              <span className="font-semibold">Corteplan Sales</span>
             </span>
             Sistema de Elaboração de Orçamentos
           </div>

@@ -514,7 +514,10 @@ export default function QuoteDetail() {
           ========================================================================= */}
       <div className="bg-slate-100 p-2 sm:p-6 rounded-2xl print:bg-white print:p-0 print:m-0 print:rounded-none">
         {/* Folha / Contêiner da Proposta */}
-        <div className="max-w-[840px] mx-auto bg-white border border-slate-200 sm:rounded-xl shadow-lg print:border-none print:shadow-none print:max-w-none print:p-0">
+        <div
+          id="proposal-sheet"
+          className="proposal-document-sheet max-w-[840px] mx-auto bg-white border border-slate-200 sm:rounded-xl shadow-lg print:border-none print:shadow-none print:max-w-none print:p-0"
+        >
           {/* =========================================================
               PÁGINA 1 — CABEÇALHO, ITENS, OBSERVAÇÕES E TOTAIS
               (Com diagramação ajustável e ordenação personalizada)
@@ -573,14 +576,24 @@ export default function QuoteDetail() {
                       </div>
                       <div className="text-slate-600">
                         <span className="font-medium text-slate-700">CNPJ/CPF: </span>
-                        {client?.notes?.includes('CNPJ:')
-                          ? client.notes.split('CNPJ:')[1]?.split('\n')[0]?.trim()
-                          : 'Conforme cadastro'}
+                        {client?.document_number
+                          ? client.document_number
+                          : client?.notes?.includes('CNPJ:')
+                            ? client.notes.split('CNPJ:')[1]?.split('\n')[0]?.trim()
+                            : 'Conforme cadastro'}
                       </div>
                       <div>
-                        {client?.address
-                          ? `${client.address}${client.city ? ` - ${client.city}` : ''}`
-                          : 'Endereço cadastrado'}
+                        {(() => {
+                          const parts: string[] = []
+                          if (client?.address) parts.push(client.address)
+                          if (client?.neighborhood) parts.push(`Bairro: ${client.neighborhood}`)
+                          if (client?.city) {
+                            parts.push(client.city)
+                          } else if (client?.state) {
+                            parts.push(client.state)
+                          }
+                          return parts.length > 0 ? parts.join(' - ') : 'Endereço cadastrado'
+                        })()}
                       </div>
                       <div>
                         <span className="font-medium text-slate-700">Telefone: </span>
@@ -594,7 +607,7 @@ export default function QuoteDetail() {
                       )}
                       <div>
                         <span className="font-medium text-slate-700">Contato: </span>
-                        {client?.name?.split(' ')[0] || 'Responsável'}
+                        {client?.contact_name || client?.name?.split(' ')[0] || 'Responsável'}
                       </div>
                     </div>
                   </LayoutBlockWrapper>
@@ -992,27 +1005,36 @@ export default function QuoteDetail() {
 
               if (blockId === 'footer') {
                 return (
-                  <LayoutBlockWrapper
-                    key={blockId}
-                    id={blockId}
-                    isEditMode={isLayoutEditMode}
-                    isSelected={selectedBlockId === blockId}
-                    styleConfig={layoutConfig.blocks[blockId]}
-                    onSelect={setSelectedBlockId}
-                    onUpdateStyle={handleUpdateBlockStyle}
-                    onMoveOrder={handleMoveBlockOrder}
-                  >
-                    <div className="pt-8 text-center text-[11px] text-slate-400">
-                      {CORTEPLAN_COMPANY_INFO.name} &bull; CNPJ: {CORTEPLAN_COMPANY_INFO.cnpj}{' '}
-                      &bull; {CORTEPLAN_COMPANY_INFO.phone} &bull; {CORTEPLAN_COMPANY_INFO.email}
-                    </div>
-                  </LayoutBlockWrapper>
+                  <div key={blockId} className="print:hidden">
+                    <LayoutBlockWrapper
+                      id={blockId}
+                      isEditMode={isLayoutEditMode}
+                      isSelected={selectedBlockId === blockId}
+                      styleConfig={layoutConfig.blocks[blockId]}
+                      onSelect={setSelectedBlockId}
+                      onUpdateStyle={handleUpdateBlockStyle}
+                      onMoveOrder={handleMoveBlockOrder}
+                    >
+                      <div className="pt-8 text-center text-[11px] text-slate-400">
+                        {CORTEPLAN_COMPANY_INFO.name} &bull; CNPJ: {CORTEPLAN_COMPANY_INFO.cnpj}{' '}
+                        &bull; {CORTEPLAN_COMPANY_INFO.phone} &bull; {CORTEPLAN_COMPANY_INFO.email}
+                      </div>
+                    </LayoutBlockWrapper>
+                  </div>
                 )
               }
 
               return null
             })}
           </section>
+
+          {/* Rodapé institucional fixo no rodapé de CADA página impressa via CSS print-fixed-footer */}
+          <footer className="hidden print-fixed-footer" aria-hidden="true">
+            <div className="font-semibold text-slate-500 tracking-wide">
+              {CORTEPLAN_COMPANY_INFO.name} &bull; CNPJ: {CORTEPLAN_COMPANY_INFO.cnpj} &bull;{' '}
+              {CORTEPLAN_COMPANY_INFO.phone} &bull; {CORTEPLAN_COMPANY_INFO.email}
+            </div>
+          </footer>
         </div>
       </div>
 

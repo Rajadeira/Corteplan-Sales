@@ -1,5 +1,7 @@
 import type { RecordModel } from 'pocketbase'
 
+export type DocumentType = 'CNPJ' | 'CPF'
+
 export interface ClientRecord extends RecordModel {
   name: string
   email?: string
@@ -8,6 +10,13 @@ export interface ClientRecord extends RecordModel {
   address?: string
   city?: string
   notes?: string
+  document_type?: DocumentType
+  document_number?: string
+  trade_name?: string
+  contact_name?: string
+  zip_code?: string
+  neighborhood?: string
+  state?: string
   expand?: {
     quotes?: QuoteRecord[]
     [key: string]: unknown

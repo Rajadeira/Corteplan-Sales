@@ -255,6 +255,8 @@ export default function QuoteForm() {
     return (
       (c.name || '').toLowerCase().includes(q) ||
       (c.company || '').toLowerCase().includes(q) ||
+      (c.trade_name || '').toLowerCase().includes(q) ||
+      (c.document_number || '').toLowerCase().includes(q) ||
       (c.email || '').toLowerCase().includes(q)
     )
   })

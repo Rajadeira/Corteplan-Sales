@@ -97,12 +97,16 @@ export default function Clients() {
       const phone = (c.phone || '').toLowerCase()
       const company = (c.company || '').toLowerCase()
       const city = (c.city || '').toLowerCase()
+      const doc = (c.document_number || '').toLowerCase()
+      const trade = (c.trade_name || '').toLowerCase()
       return (
         name.includes(clean) ||
         email.includes(clean) ||
         phone.includes(clean) ||
         company.includes(clean) ||
-        city.includes(clean)
+        city.includes(clean) ||
+        doc.includes(clean) ||
+        trade.includes(clean)
       )
     })
   }, [clients, search])
@@ -305,8 +309,14 @@ export default function Clients() {
                         <div className="font-medium text-xs text-slate-900 truncate max-w-xs">
                           {client.company ? highlightMatch(client.company, search) : '—'}
                         </div>
+                        {client.document_number && (
+                          <div className="text-[11px] text-slate-500 font-mono">
+                            {client.document_type ? `${client.document_type}: ` : ''}
+                            {highlightMatch(client.document_number, search)}
+                          </div>
+                        )}
                         {client.city && (
-                          <div className="text-[11px] text-slate-500 truncate max-w-xs">
+                          <div className="text-[11px] text-slate-400 truncate max-w-xs">
                             {highlightMatch(client.city, search)}
                           </div>
                         )}

@@ -151,6 +151,14 @@ export default function ClientDetail() {
                   {client.company}
                 </Badge>
               )}
+              {client.document_number && (
+                <Badge
+                  variant="outline"
+                  className="text-xs font-medium border-slate-300 text-slate-700 bg-white"
+                >
+                  {client.document_type || 'DOC'}: {client.document_number}
+                </Badge>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600 pt-1">
@@ -207,8 +215,12 @@ export default function ClientDetail() {
                   <div className="font-semibold text-slate-800">
                     {client.address || 'Endereço não informado'}
                   </div>
+                  {client.neighborhood && (
+                    <div className="text-slate-600 mt-0.5">Bairro: {client.neighborhood}</div>
+                  )}
                   <div className="text-slate-500 mt-0.5">
-                    {client.city || 'Cidade não informada'}
+                    {client.city || 'Cidade não informada'}{' '}
+                    {client.zip_code ? `• CEP ${client.zip_code}` : ''}
                   </div>
                 </div>
               </div>

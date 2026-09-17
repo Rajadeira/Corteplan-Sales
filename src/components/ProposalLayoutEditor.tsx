@@ -185,7 +185,10 @@ export function LayoutBlockWrapper({
 
   if (!isEditMode) {
     return (
-      <div style={computedStyle} className="print-avoid-break">
+      <div
+        style={computedStyle}
+        className="print-avoid-break print:!transform-none print:!w-full print:!m-0 print:!p-0"
+      >
         {children}
       </div>
     )
@@ -200,7 +203,7 @@ export function LayoutBlockWrapper({
         onSelect(id)
       }}
       style={computedStyle}
-      className={`relative group rounded-md transition-colors ${
+      className={`relative group rounded-md transition-colors print:!transform-none print:!w-full print:!m-0 print:!p-0 print:!outline-none print:!bg-transparent ${
         isSelected
           ? 'outline-2 outline-dashed outline-[#F08A24] bg-amber-50/20 shadow-sm'
           : 'outline-1 outline-dashed outline-slate-300 hover:outline-[#3A3A3C] hover:bg-slate-50/30'
