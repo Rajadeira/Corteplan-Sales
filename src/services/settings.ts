@@ -36,7 +36,7 @@ export const settingsService = {
   },
 
   async getCompanySettings(): Promise<CompanySettings | null> {
-    return this.getByKey<CompanySettings>('company_info')
+    return this.getByKey('company_info') as Promise<CompanySettings | null>
   },
 
   async saveCompanySettings(data: CompanySettings): Promise<AppSettingRecord> {
@@ -44,7 +44,7 @@ export const settingsService = {
   },
 
   async getTaxSettings(): Promise<TaxSettings | null> {
-    return this.getByKey<TaxSettings>('default_taxes')
+    return this.getByKey('default_taxes') as Promise<TaxSettings | null>
   },
 
   async saveTaxSettings(data: TaxSettings): Promise<AppSettingRecord> {

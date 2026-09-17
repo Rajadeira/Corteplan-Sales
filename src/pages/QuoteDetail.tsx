@@ -21,7 +21,7 @@ import type {
   QuoteStatus,
   ProposalLayoutConfig,
   ProposalBlockId,
-  ProposalBlockStyle,
+  BlockStyleConfig,
 } from '@/types'
 import { canViewValues, canManageRecord } from '@/lib/permissions'
 import { Lock, ShieldAlert } from 'lucide-react'
@@ -282,7 +282,8 @@ export default function QuoteDetail() {
   // Regra 02: Vendedor só pode visualizar e detalhar seus próprios orçamentos (ou com valores confidenciais se abrir direto)
   const isAllowedToManage = canManageRecord(quote, user)
   const isAllowedToViewValues = canViewValues(quote, user)
-  if (!isAllowedToManage && user?.role !== 'Administrador') {
+  const isAllowedToView = isAllowedToManage || user?.role === 'Administrador'
+  if (!isAllowedToView) {
     return (
       <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-xs max-w-xl mx-auto my-12 text-center space-y-4">
         <div className="h-14 w-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
@@ -396,54 +397,58 @@ export default function QuoteDetail() {
         </div>
 
         <div className="flex items-center gap-3 self-start md:self-auto shrink-0 flex-wrap">
-          {/* Ação "Gerar pedido" disponível para Enviado ou Aprovado */}
-          {(quote.status === 'Enviado' || quote.status === 'Aprovado') && (
-            <Button
-              disabled={generatingOrder}
-              onClick={handleGenerateOrder}
-              className="rounded-xl bg-gradient-to-r from-[#E66812] to-[#F08A24] hover:from-[#d1590d] hover:to-[#e07b1a] text-white font-bold shadow-sm transition-all duration-200 hover:scale-[1.02]"
-            >
-              {generatingOrder ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <PackageCheck className="h-4 w-4 mr-1.5 text-white" />
+          {isAllowedToManage && (
+            <>
+              {/* Ação "Gerar pedido" disponível para Enviado ou Aprovado */}
+              {(quote.status === 'Enviado' || quote.status === 'Aprovado') && (
+                <Button
+                  disabled={generatingOrder}
+                  onClick={handleGenerateOrder}
+                  className="rounded-xl bg-gradient-to-r from-[#E66812] to-[#F08A24] hover:from-[#d1590d] hover:to-[#e07b1a] text-white font-bold shadow-sm transition-all duration-200 hover:scale-[1.02]"
+                >
+                  {generatingOrder ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <PackageCheck className="h-4 w-4 mr-1.5 text-white" />
+                  )}
+                  {quote.order_number ? 'Gerar Outro Pedido' : 'Gerar Pedido'}
+                </Button>
               )}
-              {quote.order_number ? 'Gerar Outro Pedido' : 'Gerar Pedido'}
-            </Button>
+
+              <CorelToolbar
+                isEditMode={isLayoutEditMode}
+                onToggleEditMode={() => {
+                  setIsLayoutEditMode((prev) => !prev)
+                  setSelectedBlockId(null)
+                }}
+                selectedBlockId={selectedBlockId}
+                layoutConfig={layoutConfig}
+                onSelectBlock={setSelectedBlockId}
+                onUpdateBlockStyle={handleUpdateBlockStyle}
+                onResetBlock={handleResetBlock}
+                onResetAll={handleResetAllLayout}
+                onSaveLayout={handleSaveLayout}
+                saving={savingLayout}
+              />
+
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/orcamentos/${quote.id}/editar`)}
+                className="rounded-xl border-slate-300 text-slate-700 hover:bg-slate-50 font-medium"
+              >
+                <Edit className="h-4 w-4 mr-1.5 text-[#F08A24]" />
+                Editar Proposta
+              </Button>
+
+              <Button
+                onClick={() => window.print()}
+                className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
+              >
+                <Printer className="h-4 w-4 mr-1.5 text-[#F08A24]" />
+                Imprimir / Salvar PDF
+              </Button>
+            </>
           )}
-
-          <CorelToolbar
-            isEditMode={isLayoutEditMode}
-            onToggleEditMode={() => {
-              setIsLayoutEditMode((prev) => !prev)
-              setSelectedBlockId(null)
-            }}
-            selectedBlockId={selectedBlockId}
-            layoutConfig={layoutConfig}
-            onSelectBlock={setSelectedBlockId}
-            onUpdateBlockStyle={handleUpdateBlockStyle}
-            onResetBlock={handleResetBlock}
-            onResetAll={handleResetAllLayout}
-            onSaveLayout={handleSaveLayout}
-            saving={savingLayout}
-          />
-
-          <Button
-            variant="outline"
-            onClick={() => navigate(`/orcamentos/${quote.id}/editar`)}
-            className="rounded-xl border-slate-300 text-slate-700 hover:bg-slate-50 font-medium"
-          >
-            <Edit className="h-4 w-4 mr-1.5 text-[#F08A24]" />
-            Editar Proposta
-          </Button>
-
-          <Button
-            onClick={() => window.print()}
-            className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
-          >
-            <Printer className="h-4 w-4 mr-1.5 text-[#F08A24]" />
-            Imprimir / Salvar PDF
-          </Button>
         </div>
       </div>
 
@@ -502,43 +507,45 @@ export default function QuoteDetail() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {quote.status === 'Rascunho' && (
-            <Button
-              size="sm"
-              disabled={statusLoading}
-              onClick={() => handleUpdateStatus('Enviado')}
-              className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold"
-            >
-              <Send className="h-3.5 w-3.5 mr-1.5" />
-              Enviar ao Cliente
-            </Button>
-          )}
+        {isAllowedToManage && (
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {quote.status === 'Rascunho' && (
+              <Button
+                size="sm"
+                disabled={statusLoading}
+                onClick={() => handleUpdateStatus('Enviado')}
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold"
+              >
+                <Send className="h-3.5 w-3.5 mr-1.5" />
+                Enviar ao Cliente
+              </Button>
+            )}
 
-          {quote.status !== 'Aprovado' && (
-            <Button
-              size="sm"
-              disabled={statusLoading}
-              onClick={() => handleUpdateStatus('Aprovado')}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold"
-            >
-              <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
-              Marcar como Aprovado
-            </Button>
-          )}
+            {quote.status !== 'Aprovado' && (
+              <Button
+                size="sm"
+                disabled={statusLoading}
+                onClick={() => handleUpdateStatus('Aprovado')}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold"
+              >
+                <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
+                Marcar como Aprovado
+              </Button>
+            )}
 
-          {quote.status !== 'Rejeitado' && (
-            <Button
-              size="sm"
-              disabled={statusLoading}
-              onClick={() => handleUpdateStatus('Rejeitado')}
-              className="bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold"
-            >
-              <XCircle className="h-3.5 w-3.5 mr-1.5" />
-              Marcar como Rejeitado
-            </Button>
-          )}
-        </div>
+            {quote.status !== 'Rejeitado' && (
+              <Button
+                size="sm"
+                disabled={statusLoading}
+                onClick={() => handleUpdateStatus('Rejeitado')}
+                className="bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold"
+              >
+                <XCircle className="h-3.5 w-3.5 mr-1.5" />
+                Marcar como Rejeitado
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* =========================================================================

@@ -2,11 +2,14 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import type { AuthRecord } from 'pocketbase'
 import pb from '@/lib/pocketbase/client'
 
+import type { UserRole } from '@/types'
+
 export interface UserProfile {
   id: string
   name: string
   email: string
   avatar?: string
+  role?: UserRole
 }
 
 interface AuthContextType {
@@ -30,6 +33,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: (rec.name as string) || (rec.email as string)?.split('@')[0] || 'Usuário',
         email: rec.email as string,
         avatar: (rec.avatar as string) || undefined,
+        role: (rec.role as UserRole) || 'Vendedor',
       }
     }
     return null
@@ -47,6 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: (rec.name as string) || (rec.email as string)?.split('@')[0] || 'Usuário',
           email: rec.email as string,
           avatar: (rec.avatar as string) || undefined,
+          role: (rec.role as UserRole) || 'Vendedor',
         })
       } else {
         setUser(null)
@@ -65,6 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               name: (rec.name as string) || (rec.email as string)?.split('@')[0] || 'Usuário',
               email: rec.email as string,
               avatar: (rec.avatar as string) || undefined,
+              role: (rec.role as UserRole) || 'Vendedor',
             })
           }
         })
@@ -93,6 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       name: (rec.name as string) || (rec.email as string)?.split('@')[0] || 'Usuário',
       email: rec.email as string,
       avatar: (rec.avatar as string) || undefined,
+      role: (rec.role as UserRole) || 'Vendedor',
     })
     setToken(authData.token)
   }

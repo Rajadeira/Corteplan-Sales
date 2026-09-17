@@ -47,7 +47,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { useAuth } from '@/contexts/AuthContext'
 import { toast } from 'sonner'
 
 const statusList: { key: string; label: string }[] = [
@@ -203,6 +202,18 @@ export default function Orders() {
       badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
     } else if (status === 'Cancelado') {
       badgeClass = 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+    }
+
+    const canManage = canManageRecord(order, user)
+
+    if (!canManage) {
+      return (
+        <span
+          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeClass}`}
+        >
+          {status}
+        </span>
+      )
     }
 
     return (

@@ -56,6 +56,10 @@ export function canViewValues(
 ): boolean {
   if (!record || !user) return false
   if (user.role === 'Administrador') return true
+  // Se for pedido (possui order_number ou collectionName 'orders'), checa isOrderOwner
+  if ('order_number' in record) {
+    return isOrderOwner(record as OrderRecord, user)
+  }
   return isQuoteOwner(record as QuoteRecord, user)
 }
 
@@ -83,5 +87,8 @@ export function canManageRecord(
 ): boolean {
   if (!record || !user) return false
   if (user.role === 'Administrador') return true
+  if ('order_number' in record) {
+    return isOrderOwner(record as OrderRecord, user)
+  }
   return isQuoteOwner(record as QuoteRecord, user)
 }

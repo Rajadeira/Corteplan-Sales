@@ -168,6 +168,36 @@ export default function OrderDetail() {
     )
   }
 
+  // Regra de acesso: Vendedor só pode visualizar e detalhar seus próprios pedidos
+  const isAllowedToManage = canManageRecord(order, user)
+  const isAllowedToView = isAllowedToManage || user?.role === 'Administrador'
+  if (!isAllowedToView) {
+    return (
+      <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-xs max-w-xl mx-auto my-12 text-center space-y-4">
+        <div className="h-14 w-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+          <ShieldAlert className="h-7 w-7" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-xl font-bold text-slate-900">Acesso Restrito / Confidencial</h2>
+          <p className="text-sm text-slate-500">
+            Este pedido pertence a outro vendedor. Pelas regras de segurança da Corteplan, você não
+            possui permissão para visualizar os detalhes internos, editar, cancelar ou gerar PDF
+            deste pedido.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Button
+            onClick={() => navigate('/pedidos')}
+            className="bg-[#3A3A3C] hover:bg-[#2E2E30] text-white"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Voltar para lista de pedidos
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   const client = order.expand?.client
   const produtosTotal = order.subtotal || 0
   const icmsVal = order.icms || 0
@@ -236,15 +266,17 @@ export default function OrderDetail() {
         </div>
 
         <div className="flex items-center gap-3 self-start md:self-auto shrink-0 flex-wrap">
-          <Button
-            onClick={() => window.print()}
-            className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
-          >
-            <Printer className="h-4 w-4 mr-1.5 text-[#F08A24]" />
-            Imprimir / Salvar PDF
-          </Button>
+          {isAllowedToManage && (
+            <Button
+              onClick={() => window.print()}
+              className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium shadow-sm transition-all duration-200 hover:scale-[1.02]"
+            >
+              <Printer className="h-4 w-4 mr-1.5 text-[#F08A24]" />
+              Imprimir / Salvar PDF
+            </Button>
+          )}
 
-          {order.status !== 'Cancelado' && (
+          {isAllowedToManage && order.status !== 'Cancelado' && (
             <Button
               variant="outline"
               onClick={() => setIsCancelModalOpen(true)}
@@ -272,42 +304,44 @@ export default function OrderDetail() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {order.status !== 'Em Produção' && order.status !== 'Concluído' && (
-            <Button
-              size="sm"
-              disabled={statusLoading}
-              onClick={() => handleUpdateStatus('Em Produção')}
-              className="bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold"
-            >
-              <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
-              Iniciar Produção
-            </Button>
-          )}
+        {isAllowedToManage && (
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {order.status !== 'Em Produção' && order.status !== 'Concluído' && (
+              <Button
+                size="sm"
+                disabled={statusLoading}
+                onClick={() => handleUpdateStatus('Em Produção')}
+                className="bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold"
+              >
+                <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
+                Iniciar Produção
+              </Button>
+            )}
 
-          {order.status !== 'Concluído' && (
-            <Button
-              size="sm"
-              disabled={statusLoading}
-              onClick={() => handleUpdateStatus('Concluído')}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold"
-            >
-              <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
-              Marcar como Concluído
-            </Button>
-          )}
+            {order.status !== 'Concluído' && (
+              <Button
+                size="sm"
+                disabled={statusLoading}
+                onClick={() => handleUpdateStatus('Concluído')}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold"
+              >
+                <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
+                Marcar como Concluído
+              </Button>
+            )}
 
-          {order.status === 'Cancelado' && (
-            <Button
-              size="sm"
-              disabled={statusLoading}
-              onClick={() => handleUpdateStatus('Aberto')}
-              className="bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-semibold"
-            >
-              Reabrir Pedido
-            </Button>
-          )}
-        </div>
+            {order.status === 'Cancelado' && (
+              <Button
+                size="sm"
+                disabled={statusLoading}
+                onClick={() => handleUpdateStatus('Aberto')}
+                className="bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-semibold"
+              >
+                Reabrir Pedido
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* =========================================================================

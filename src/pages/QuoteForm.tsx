@@ -18,7 +18,9 @@ import {
   Image as ImageIcon,
   Upload,
   X,
+  ShieldAlert,
 } from 'lucide-react'
+import { canManageRecord } from '@/lib/permissions'
 import { compressProductImage } from '@/lib/imageUtils'
 import { quoteService } from '@/services/quotes'
 import { clientService } from '@/services/clients'
@@ -61,6 +63,7 @@ export default function QuoteForm() {
   const { user } = useAuth()
 
   const isEditing = Boolean(id)
+  const [unauthorized, setUnauthorized] = useState(false)
 
   // Pre-selected client from navigation state (ex: from client detail)
   const initialClientId = (location.state as { clientId?: string })?.clientId
@@ -146,6 +149,12 @@ export default function QuoteForm() {
 
         if (isEditing && id) {
           const q = await quoteService.getById(id)
+          // Bloqueio de edição para vendedor que não é dono da proposta
+          if (user && user.role !== 'Administrador' && !canManageRecord(q, user)) {
+            setUnauthorized(true)
+            setLoading(false)
+            return
+          }
           setExistingQuote(q)
           setQuoteNumber(q.quote_number)
           setFormattedNumber(formatQuoteNumber(q.quote_number))
@@ -529,6 +538,31 @@ export default function QuoteForm() {
         <div className="flex flex-col items-center gap-3 text-slate-500">
           <Loader2 className="h-8 w-8 animate-spin text-[#3A3A3C]" />
           <p className="text-sm">Carregando formulário de proposta...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (unauthorized) {
+    return (
+      <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-xs max-w-xl mx-auto my-12 text-center space-y-4">
+        <div className="h-14 w-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+          <ShieldAlert className="h-7 w-7" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-xl font-bold text-slate-900">Acesso Restrito</h2>
+          <p className="text-sm text-slate-500">
+            Você não possui permissão para editar propostas comerciais de outro vendedor.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Button
+            onClick={() => navigate('/orcamentos')}
+            className="bg-[#3A3A3C] hover:bg-[#2E2E30] text-white"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Voltar para lista de orçamentos
+          </Button>
         </div>
       </div>
     )
