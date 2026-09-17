@@ -9,10 +9,6 @@ import {
   ArrowRight,
   Plus,
   Loader2,
-  Building,
-  Phone,
-  Clock,
-  Sparkles,
 } from 'lucide-react'
 import {
   BarChart,
@@ -26,27 +22,35 @@ import {
 } from 'recharts'
 import { clientService } from '@/services/clients'
 import { quoteService } from '@/services/quotes'
+import { userService } from '@/services/users'
+import { useAuth } from '@/contexts/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { ClientRecord, QuoteRecord } from '@/types'
-import { formatCurrencyBRL, formatQuoteNumber } from '@/types'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import type { ClientRecord, QuoteRecord, AppUserRecord } from '@/types'
+import { formatCurrencyBRL, formatQuoteNumber, calculateCommission } from '@/types'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Award, Lock, ShieldCheck } from 'lucide-react'
 
 export default function Index() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'Administrador'
   const [clients, setClients] = useState<ClientRecord[]>([])
   const [quotes, setQuotes] = useState<QuoteRecord[]>([])
+  const [usersList, setUsersList] = useState<AppUserRecord[]>([])
   const [loading, setLoading] = useState(true)
 
   const loadData = async () => {
     try {
-      const [allClients, allQuotes] = await Promise.all([
+      const [allClients, allQuotes, allUsers] = await Promise.all([
         clientService.getAll(),
         quoteService.getAll(),
+        userService.getAll().catch(() => []),
       ])
       setClients(allClients)
       setQuotes(allQuotes)
+      setUsersList(allUsers)
     } catch (err) {
       console.error('Erro ao carregar dados do Dashboard:', err)
     } finally {
@@ -119,6 +123,146 @@ export default function Index() {
 
   // 5 clientes recentes
   const recentClients = [...clients].slice(0, 5)
+
+  // =========================================================================
+  // CÁLCULO DAS COMISSÕES DO MÊS ATUAL POR VENDEDOR
+  // Regra Corteplan:
+  // - Orçamentos emitidos no mês corrente (mês e ano de q.created)
+  // - Base comissionável = itens exceto impostos, Frete e Instalação (calculateCommission)
+  // - Confidencialidade: Administrador vê todos os vendedores;
+  //   Vendedor vê apenas a própria linha.
+  // =========================================================================
+  const currentMonthQuotes = quotes.filter((q) => {
+    if (!q.created) return false
+    const qDate = new Date(q.created)
+    return qDate.getMonth() === now.getMonth() && qDate.getFullYear() === now.getFullYear()
+  })
+
+  // Agrupa os orçamentos do mês por vendedor
+  interface SellerCommissionSummary {
+    userId?: string
+    name: string
+    role: string
+    quotesCount: number
+    commissionTotal: number
+    totalVolume: number
+    isCurrentUser: boolean
+  }
+
+  // Mapa de vendedores conhecidos (a partir de usersList e dos orçamentos do mês)
+  const sellersMap = new Map<string, SellerCommissionSummary>()
+
+  // Inicializa com usuários ativos do sistema que sejam Vendedores ou tenham emitido algo
+  usersList.forEach((u) => {
+    const isMe = user?.id === u.id
+    sellersMap.set(u.id, {
+      userId: u.id,
+      name: u.name || u.email.split('@')[0],
+      role: u.role || 'Vendedor',
+      quotesCount: 0,
+      commissionTotal: 0,
+      totalVolume: 0,
+      isCurrentUser: isMe,
+    })
+  })
+
+  // Processa cada orçamento do mês
+  currentMonthQuotes.forEach((q) => {
+    const { commissionAmount } = calculateCommission(
+      q.items,
+      q.discount_percent,
+      q.commission_percent,
+    )
+
+    // Identifica o vendedor
+    let sellerKey = q.seller_user
+    let sellerName = q.seller || q.expand?.seller_user?.name
+
+    if (!sellerKey) {
+      // Tenta achar pelo nome do vendedor nos users
+      const match = usersList.find(
+        (u) =>
+          sellerName &&
+          (u.name.toLowerCase().trim() === sellerName.toLowerCase().trim() ||
+            sellerName.toLowerCase().includes(u.name.toLowerCase().trim())),
+      )
+      if (match) {
+        sellerKey = match.id
+        sellerName = match.name
+      } else {
+        sellerKey = sellerName ? `name:${sellerName}` : 'unknown'
+      }
+    }
+
+    if (!sellerName && sellerKey && sellersMap.has(sellerKey)) {
+      sellerName = sellersMap.get(sellerKey)!.name
+    }
+
+    const finalName = sellerName || 'Vendedor'
+    const isMe =
+      user?.id === sellerKey ||
+      (user?.name && finalName.toLowerCase().trim() === user.name.toLowerCase().trim())
+
+    if (!sellersMap.has(sellerKey)) {
+      sellersMap.set(sellerKey, {
+        userId: sellerKey.startsWith('name:') ? undefined : sellerKey,
+        name: finalName,
+        role: 'Vendedor',
+        quotesCount: 0,
+        commissionTotal: 0,
+        totalVolume: 0,
+        isCurrentUser: isMe,
+      })
+    }
+
+    const existing = sellersMap.get(sellerKey)!
+    existing.quotesCount += 1
+    existing.commissionTotal += commissionAmount
+    existing.totalVolume += q.total || 0
+    if (isMe) existing.isCurrentUser = true
+  })
+
+  // Converte para lista
+  let sellersCommissionList = Array.from(sellersMap.values())
+
+  // Se não for admin, filtra estritamente para apenas a própria linha
+  if (!isAdmin) {
+    sellersCommissionList = sellersCommissionList.filter(
+      (s) =>
+        s.isCurrentUser ||
+        (user?.id && s.userId === user.id) ||
+        (user?.name && s.name.toLowerCase().trim() === user.name.toLowerCase().trim()),
+    )
+
+    // Se o usuário ainda não tiver nenhum orçamento no mês, assegura exibição zerada
+    if (sellersCommissionList.length === 0 && user) {
+      sellersCommissionList = [
+        {
+          userId: user.id,
+          name: user.name || 'Meu Usuário',
+          role: user.role || 'Vendedor',
+          quotesCount: 0,
+          commissionTotal: 0,
+          totalVolume: 0,
+          isCurrentUser: true,
+        },
+      ]
+    }
+  } else {
+    // Admin: exibe vendedores que emitiram propostas ou comissionamento no mês ou usuários cadastrados
+    // Remove entradas sem movimentação apenas se houver mais de 5, senão exibe todos
+    if (sellersCommissionList.length > 8) {
+      sellersCommissionList = sellersCommissionList.filter(
+        (s) => s.quotesCount > 0 || s.commissionTotal > 0,
+      )
+    }
+  }
+
+  // Ordenar por maior comissão decrescente
+  sellersCommissionList.sort((a, b) => b.commissionTotal - a.commissionTotal)
+
+  const totalCommissionsMonth = sellersCommissionList.reduce((sum, s) => sum + s.commissionTotal, 0)
+  const totalQuotesMonth = sellersCommissionList.reduce((sum, s) => sum + s.quotesCount, 0)
 
   // Cores de status
   const getStatusBadge = (status: string) => {
@@ -205,6 +349,150 @@ export default function Index() {
           </Button>
         </div>
       </div>
+
+      {/* PAINEL DE COMISSÕES DO MÊS (POR VENDEDOR) COM REGRA DE CONFIDENCIALIDADE */}
+      <Card className="rounded-2xl border-slate-800 bg-[#1C1C1E] text-white shadow-xl overflow-hidden">
+        <div className="p-6 border-b border-slate-800 bg-gradient-to-r from-[#242427] to-[#1C1C1E] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-[#E66812] to-[#F08A24] text-white flex items-center justify-center font-black shadow-md shrink-0">
+              <Award className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
+                  Comissões do Mês ({monthNames[now.getMonth()]}/{now.getFullYear()})
+                </h3>
+                {isAdmin ? (
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-orange-500/20 text-[#F08A24] border border-orange-500/30 flex items-center gap-1">
+                    <ShieldCheck className="h-3 w-3" />
+                    Visão Geral Admin
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                    <Lock className="h-3 w-3" />
+                    Minha Comissão (Confidencial)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {isAdmin
+                  ? 'Total acumulado por vendedor em propostas emitidas no mês atual (base de produtos comissionáveis)'
+                  : 'Seu resumo comissionável acumulado no mês corrente'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 bg-[#2C2C2E] px-4 py-2.5 rounded-xl border border-slate-700/60 shrink-0 self-start sm:self-auto">
+            <div>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
+                {isAdmin ? 'Total Comissões da Equipe' : 'Minha Comissão Prevista'}
+              </span>
+              <span className="font-mono text-lg sm:text-xl font-extrabold text-[#F08A24]">
+                {formatCurrencyBRL(totalCommissionsMonth)}
+              </span>
+            </div>
+            <div className="h-8 w-px bg-slate-700" />
+            <div>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
+                Propostas do Mês
+              </span>
+              <span className="font-mono text-lg sm:text-xl font-extrabold text-white">
+                {totalQuotesMonth}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead className="bg-[#242427] text-slate-400 text-xs uppercase font-semibold border-b border-slate-800">
+                <tr>
+                  <th className="py-3 px-5 sm:px-6">Vendedor</th>
+                  <th className="py-3 px-4 text-center">Propostas no Mês</th>
+                  <th className="py-3 px-4 text-right">Volume Emitido</th>
+                  <th className="py-3 px-5 sm:px-6 text-right">Comissão Acumulada</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/80">
+                {sellersCommissionList.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-xs text-slate-500">
+                      Nenhum orçamento emitido no mês de {monthNames[now.getMonth()]}.
+                    </td>
+                  </tr>
+                ) : (
+                  sellersCommissionList.map((seller, idx) => (
+                    <tr
+                      key={seller.userId || seller.name}
+                      className={`transition-colors ${
+                        seller.isCurrentUser
+                          ? 'bg-amber-500/10 hover:bg-amber-500/15'
+                          : 'hover:bg-slate-800/50'
+                      }`}
+                    >
+                      <td className="py-3.5 px-5 sm:px-6">
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-bold text-xs text-slate-500 w-5">
+                            #{idx + 1}
+                          </span>
+                          <Avatar className="h-8 w-8 ring-1 ring-slate-700 shrink-0">
+                            <AvatarFallback className="bg-[#2C2C2E] text-[#F08A24] font-bold text-xs">
+                              {getInitials(seller.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-semibold text-white flex items-center gap-2">
+                              <span>{seller.name}</span>
+                              {seller.isCurrentUser && (
+                                <Badge className="bg-[#F08A24] text-black font-extrabold text-[10px] hover:bg-[#F08A24] py-0 px-1.5 h-4">
+                                  Você
+                                </Badge>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-slate-400">{seller.role}</span>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-center">
+                        <span className="font-mono font-bold text-slate-200 bg-[#262628] px-2.5 py-1 rounded-lg border border-slate-700/80">
+                          {seller.quotesCount}{' '}
+                          {seller.quotesCount === 1 ? 'orçamento' : 'orçamentos'}
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-right font-mono text-slate-300">
+                        {formatCurrencyBRL(seller.totalVolume)}
+                      </td>
+
+                      <td className="py-3.5 px-5 sm:px-6 text-right">
+                        <span className="font-mono font-bold text-base text-[#F08A24]">
+                          {formatCurrencyBRL(seller.commissionTotal)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="p-3.5 bg-[#171719] border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-400 gap-2 px-5 sm:px-6">
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#F08A24]" />
+              <span>
+                Cálculo: (base de produtos comissionáveis &minus; desconto proporcional) &times; %
+                comissão do orçamento.
+              </span>
+            </div>
+            {!isAdmin && (
+              <span className="text-slate-500 text-[11px]">
+                Regra de confidencialidade ativa: apenas o próprio vendedor visualiza seus dados.
+              </span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* 4 Cards de Resumo (KPIs) com microinteração de elevação */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">

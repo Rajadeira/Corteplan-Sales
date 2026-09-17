@@ -162,6 +162,22 @@ export interface QuoteRecord extends RecordModel {
   }
 }
 
+export interface NotificationRecord extends RecordModel {
+  user: string
+  type?: string
+  title: string
+  message: string
+  quote?: string
+  read?: boolean
+  created: string
+  updated: string
+  expand?: {
+    user?: AppUserRecord
+    quote?: QuoteRecord
+    [key: string]: unknown
+  }
+}
+
 export interface OrderRecord extends RecordModel {
   order_number: number
   client: string

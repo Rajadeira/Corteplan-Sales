@@ -256,6 +256,9 @@ export default function QuoteDetail() {
       const updated = await quoteService.updateStatus(id, newStatus, userName)
       setQuote(updated)
       toast.success(`Status atualizado para "${newStatus}"!`)
+      if (newStatus === 'Aprovado') {
+        toast.info('Notificações de aprovação enviadas para a equipe!')
+      }
     } catch (err: unknown) {
       console.error('Erro ao atualizar status:', err)
       toast.error('Erro ao atualizar status do orçamento.')

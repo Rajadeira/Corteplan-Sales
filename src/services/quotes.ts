@@ -167,16 +167,45 @@ export const quoteService = {
       changed_by: userName,
     })
 
-    return pb.collection('quotes').update<QuoteRecord>(
+    const updated = await pb.collection('quotes').update<QuoteRecord>(
       id,
       {
         status: newStatus,
         status_history: history,
       },
       {
-        expand: 'client',
+        expand: 'client,seller_user',
       },
     )
+
+    // Se mudou para "Aprovado", disparar notificações para vendedor e admins
+    if (newStatus === 'Aprovado' && current.status !== 'Aprovado') {
+      try {
+        const { notificationService } = await import('./notifications')
+        const currentUserId = pb.authStore.record?.id
+        const sellerUserId =
+          updated.seller_user ||
+          current.seller_user ||
+          (typeof updated.expand?.seller_user === 'object' && updated.expand?.seller_user
+            ? (updated.expand.seller_user as { id?: string }).id
+            : undefined)
+
+        const clientName = updated.expand?.client?.name || current.expand?.client?.name || 'Cliente'
+
+        await notificationService.notifyQuoteApproved({
+          quoteId: updated.id,
+          quoteNumber: updated.quote_number,
+          clientName,
+          sellerUserId,
+          approverUserId: currentUserId,
+          approverName: userName,
+        })
+      } catch (notifyErr) {
+        console.warn('Erro ao disparar notificações de orçamento aprovado:', notifyErr)
+      }
+    }
+
+    return updated
   },
 
   async delete(id: string): Promise<boolean> {

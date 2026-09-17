@@ -13,18 +13,15 @@ import {
   Menu,
   X,
   Search,
-  Armchair,
   ExternalLink,
-  User,
-  ShieldCheck,
-  Building,
   Package,
   Settings,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { clientService } from '@/services/clients'
 import { quoteService } from '@/services/quotes'
-import type { ClientRecord, QuoteRecord } from '@/types'
+import { notificationService } from '@/services/notifications'
+import type { ClientRecord, QuoteRecord, NotificationRecord } from '@/types'
 import { formatCurrencyBRL, formatQuoteNumber } from '@/types'
 import {
   DropdownMenu,
@@ -38,6 +35,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { Bell, CheckCheck, Clock } from 'lucide-react'
+import { toast } from 'sonner'
+import pb from '@/lib/pocketbase/client'
 
 const navItems = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard, adminOnly: false },
@@ -68,6 +68,145 @@ export default function Layout() {
   }>({ clients: [], quotes: [] })
   const [isSearching, setIsSearching] = useState(false)
   const searchContainerRef = useRef<HTMLDivElement>(null)
+
+  // Notifications state
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([])
+  const [unreadCount, setUnreadCount] = useState<number>(0)
+  const [notificationsLoading, setNotificationsLoading] = useState<boolean>(false)
+
+  // Carregar notificações do usuário logado
+  const loadNotifications = async () => {
+    if (!user) return
+    try {
+      setNotificationsLoading(true)
+      const list = await notificationService.getMyNotifications(20)
+      setNotifications(list)
+      const unread = list.filter((n) => !n.read).length
+      setUnreadCount(unread)
+    } catch (err) {
+      console.warn('Erro ao carregar notificações:', err)
+    } finally {
+      setNotificationsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (user?.id) {
+      loadNotifications()
+    }
+  }, [user?.id])
+
+  // Subscrição em tempo real para notificações do usuário logado
+  useEffect(() => {
+    if (!user?.id) return
+
+    let isSubscribed = true
+    const setupRealtime = async () => {
+      try {
+        await pb.collection('notifications').subscribe('*', (e) => {
+          if (!isSubscribed) return
+          const record = e.record as unknown as NotificationRecord
+
+          // Se a notificação for para mim
+          if (record && record.user === user.id) {
+            if (e.action === 'create') {
+              setNotifications((prev) => [record, ...prev.filter((n) => n.id !== record.id)])
+              setUnreadCount((c) => c + 1)
+              // Alerta sonoro/visual breve na sessão atual
+              toast.info(record.title, {
+                description: record.message,
+                duration: 5000,
+                action: record.quote
+                  ? {
+                      label: 'Ver Proposta',
+                      onClick: () => navigate(`/orcamentos/${record.quote}`),
+                    }
+                  : undefined,
+              })
+            } else if (e.action === 'update') {
+              setNotifications((prev) => prev.map((n) => (n.id === record.id ? record : n)))
+              // Recalcula contagem de não lidas
+              loadNotifications()
+            } else if (e.action === 'delete') {
+              setNotifications((prev) => prev.filter((n) => n.id !== record.id))
+              loadNotifications()
+            }
+          }
+        })
+      } catch (err) {
+        console.warn('Erro ao conectar realtime de notificações:', err)
+      }
+    }
+
+    setupRealtime()
+
+    return () => {
+      isSubscribed = false
+      try {
+        pb.collection('notifications')
+          .unsubscribe('*')
+          .catch(() => {})
+      } catch {
+        /* intentionally ignored */
+      }
+    }
+  }, [user?.id, navigate])
+
+  const handleNotificationClick = async (notification: NotificationRecord) => {
+    try {
+      if (!notification.read) {
+        await notificationService.markAsRead(notification.id)
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)),
+        )
+        setUnreadCount((prev) => Math.max(0, prev - 1))
+      }
+      if (notification.quote) {
+        navigate(`/orcamentos/${notification.quote}`)
+      }
+    } catch (err) {
+      console.warn('Erro ao marcar notificação como lida:', err)
+    }
+  }
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await notificationService.markAllAsRead()
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+      setUnreadCount(0)
+      toast.success('Todas as notificações foram marcadas como lidas.')
+    } catch (err) {
+      console.warn('Erro ao marcar todas como lidas:', err)
+      toast.error('Não foi possível marcar todas como lidas.')
+    }
+  }
+
+  // Formatador de tempo relativo em PT-BR
+  const formatRelativeTime = (dateStr?: string) => {
+    if (!dateStr) return ''
+    try {
+      const now = new Date().getTime()
+      const past = new Date(dateStr).getTime()
+      const diffMs = Math.max(0, now - past)
+      const diffMin = Math.floor(diffMs / 60000)
+      const diffHours = Math.floor(diffMin / 60)
+      const diffDays = Math.floor(diffHours / 24)
+
+      if (diffMin < 1) return 'Agora mesmo'
+      if (diffMin === 1) return 'Há 1 minuto'
+      if (diffMin < 60) return `Há ${diffMin} min`
+      if (diffHours === 1) return 'Há 1 hora'
+      if (diffHours < 24) return `Há ${diffHours} h`
+      if (diffDays === 1) return 'Ontem'
+      if (diffDays < 7) return `Há ${diffDays} dias`
+      return new Date(dateStr).toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+      })
+    } catch (_) {
+      return ''
+    }
+  }
 
   // Close mobile sidebar on route change
   useEffect(() => {
@@ -431,6 +570,113 @@ export default function Layout() {
                 </div>
               )}
             </div>
+
+            {/* Sininho de Notificações com Badge de Não Lidas */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="relative h-9 w-9 rounded-full p-0 text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                  title="Notificações do sistema"
+                >
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#E66812] text-white text-[10px] font-extrabold flex items-center justify-center ring-2 ring-white animate-in zoom-in-50 duration-200 shadow-sm">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="w-80 sm:w-96 p-0 rounded-2xl shadow-2xl border-slate-200 bg-white overflow-hidden text-slate-800"
+                align="end"
+                forceMount
+              >
+                <div className="flex items-center justify-between px-4 py-3 bg-[#242427] text-white border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Bell className="h-4 w-4 text-[#F08A24]" />
+                    <span className="font-bold text-sm">Notificações</span>
+                    {unreadCount > 0 && (
+                      <Badge className="bg-[#F08A24] text-black font-extrabold text-[10px] px-1.5 py-0 h-4">
+                        {unreadCount} nova{unreadCount > 1 ? 's' : ''}
+                      </Badge>
+                    )}
+                  </div>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleMarkAllAsRead}
+                      className="text-xs text-orange-300 hover:text-white flex items-center gap-1 transition-colors font-medium"
+                      title="Marcar todas como lidas"
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      Marcar todas
+                    </button>
+                  )}
+                </div>
+
+                <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100">
+                  {notifications.length === 0 ? (
+                    <div className="py-10 text-center px-4 space-y-2">
+                      <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                        <Bell className="h-5 w-5" />
+                      </div>
+                      <p className="text-xs font-medium text-slate-500">
+                        Nenhuma notificação no momento
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Você será notificado aqui quando um orçamento for aprovado.
+                      </p>
+                    </div>
+                  ) : (
+                    notifications.map((n) => (
+                      <div
+                        key={n.id}
+                        onClick={() => handleNotificationClick(n)}
+                        className={`p-3.5 transition-colors cursor-pointer flex items-start gap-3 hover:bg-slate-50 ${
+                          !n.read ? 'bg-amber-500/5' : 'bg-white'
+                        }`}
+                      >
+                        <div
+                          className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${
+                            !n.read ? 'bg-[#F08A24] ring-2 ring-orange-200' : 'bg-slate-300'
+                          }`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <h4
+                              className={`text-xs font-bold truncate ${
+                                !n.read ? 'text-slate-900' : 'text-slate-700'
+                              }`}
+                            >
+                              {n.title}
+                            </h4>
+                            <span className="text-[10px] text-slate-400 shrink-0 flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {formatRelativeTime(n.created)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 mt-0.5 line-clamp-2 leading-relaxed">
+                            {n.message}
+                          </p>
+                          {n.quote && (
+                            <span className="inline-block mt-1 text-[11px] font-semibold text-[#E66812] hover:underline">
+                              Ver orçamento &rarr;
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="p-2.5 bg-slate-50 border-t border-slate-100 text-center">
+                  <span className="text-[11px] text-slate-400">
+                    Notificações de orçamentos aprovados da equipe
+                  </span>
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* User Dropdown */}
             <DropdownMenu>
