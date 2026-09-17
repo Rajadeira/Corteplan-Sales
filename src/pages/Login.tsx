@@ -6,11 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import robotMascotImg from '@/assets/geminigeneratedimageuklpi8uklpi8uklp-f231b.png'
-import corteplanLogoImg from '@/assets/logo-1-2ad68.jpg'
-import logoNovoImg from '@/assets/logo-novo-corteplan-f44ab.png'
-import a81Img from '@/assets/a81fb19c-16e8-45bf-8922-ff319310fd6d-a8846.png'
-import imageDfImg from '@/assets/image-df978-1-280a6.png'
+import robotMascotImg from '@/assets/d54b79eb-9d0d-4995-bf27-319da4ab10c8-82c03.png'
+import logoBrancoImg from '@/assets/logo-novo-corteplan-branco-58c7e.png'
+import CorteplanLogo from '@/components/CorteplanLogo'
 
 export default function Login() {
   const { login } = useAuth()
@@ -116,27 +114,23 @@ export default function Login() {
           }}
         />
 
-        {/* Topo Esquerdo: Logo CORTEPLAN */}
+        {/* Topo Esquerdo: Logo CORTEPLAN (versão branca oficial sobre fundo escuro) */}
         <div className="relative z-10">
-          <div className="inline-block p-1.5 bg-[#1C1D21]/90 rounded-xl border border-white/10 shadow-lg shadow-black/40 backdrop-blur-sm">
+          <div className="inline-block p-2 bg-[#1C1D21]/80 rounded-xl border border-white/10 shadow-lg shadow-black/40 backdrop-blur-sm">
             <img
-              src={corteplanLogoImg}
+              src={logoBrancoImg}
               alt="CORTEPLAN"
-              className="h-10 sm:h-12 w-auto object-contain rounded-md"
+              className="h-10 sm:h-11 w-auto object-contain select-none"
             />
           </div>
         </div>
 
-        {/* Imagem do Mascote Robô com corte/blend perfeito sobre o fundo escuro */}
-        <div className="absolute right-[-4%] xl:right-[1%] top-[8%] bottom-0 w-[62%] max-w-[560px] pointer-events-none z-10 flex items-center justify-end">
+        {/* Imagem do Mascote Robô oficial sobre o fundo escuro com iluminação */}
+        <div className="absolute right-[-2%] xl:right-[2%] bottom-0 top-[10%] w-[58%] max-w-[540px] pointer-events-none z-10 flex items-end justify-end">
           <img
             src={robotMascotImg}
             alt="Mascote Corteplan Robô"
-            className="w-full h-auto max-h-[88%] object-contain select-none"
-            style={{
-              mixBlendMode: 'screen',
-              filter: 'drop-shadow(0 20px 35px rgba(0,0,0,0.6)) contrast(108%) brightness(102%)',
-            }}
+            className="w-auto h-auto max-h-[92%] max-w-full object-contain select-none drop-shadow-[0_25px_35px_rgba(0,0,0,0.6)]"
           />
         </div>
 
@@ -203,8 +197,8 @@ export default function Login() {
         <div className="w-full max-w-[460px] bg-white rounded-2xl shadow-[0_10px_35px_-5px_rgba(0,0,0,0.08),0_4px_12px_-2px_rgba(0,0,0,0.04)] border border-slate-100 p-7 sm:p-10 space-y-6">
           {/* Logo Corteplan visível no mobile no topo do card */}
           <div className="lg:hidden flex justify-center pb-2">
-            <div className="inline-block p-1 bg-white rounded-xl border border-slate-200 shadow-sm">
-              <img src={corteplanLogoImg} alt="CORTEPLAN" className="h-10 w-auto object-contain" />
+            <div className="inline-block px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-200 shadow-xs">
+              <CorteplanLogo width={160} height={38} />
             </div>
           </div>
 
