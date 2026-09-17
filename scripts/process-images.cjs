@@ -1,7 +1,6 @@
 const fs = require('fs')
-console.log('--- TEST RUNNING NODE SCRIPT ---')
-console.log('files:', fs.readdirSync('src/assets'))
-for (const f of fs.readdirSync('src/assets')) {
-  const stat = fs.statSync(`src/assets/${f}`)
-  console.log(`Asset ${f}: ${stat.size} bytes`)
-}
+
+const nodeModules = fs.readdirSync('node_modules')
+const imageLibs = nodeModules.filter((m) => /sharp|jimp|png|canvas|jpeg|image/i.test(m))
+
+throw new Error('DEBUG_TEST: modules=' + imageLibs.join(',') + ' total=' + nodeModules.length)

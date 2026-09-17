@@ -8,6 +8,9 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import robotMascotImg from '@/assets/geminigeneratedimageuklpi8uklpi8uklp-f231b.png'
 import corteplanLogoImg from '@/assets/logo-1-2ad68.jpg'
+import logoNovoImg from '@/assets/logo-novo-corteplan-f44ab.png'
+import a81Img from '@/assets/a81fb19c-16e8-45bf-8922-ff319310fd6d-a8846.png'
+import imageDfImg from '@/assets/image-df978-1-280a6.png'
 
 export default function Login() {
   const { login } = useAuth()
