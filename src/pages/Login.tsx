@@ -144,7 +144,7 @@ export default function Login() {
           {/* Pequeno traço laranja horizontal abaixo do título */}
           <div className="w-12 h-1 bg-[#F08A24] rounded-full my-4" />
 
-          <p className="text-slate-300 text-sm sm:text-base leading-relaxed pr-6 max-w-sm">
+          <p className="text-slate-300 leading-relaxed pr-6 max-w-sm text-[0.86rem]">
             Controle seus clientes, projetos e orçamentos de forma simples, rápida e eficiente.
           </p>
         </div>
