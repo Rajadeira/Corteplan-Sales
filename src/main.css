@@ -129,8 +129,8 @@
 @media print {
   @page {
     size: A4 portrait;
-    /* Margens superior e laterais; inferior deixa espaço para o rodapé fixo */
-    margin: 10mm 12mm 16mm 12mm;
+    /* Margens superior e laterais; inferior com 18mm para garantir espaço ao rodapé fixo sem sobrepor */
+    margin: 10mm 12mm 18mm 12mm;
   }
 
   html,
@@ -143,6 +143,7 @@
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
+    font-size: 12px;
   }
 
   /* Anula fundos de interface do aplicativo para que a folha seja 100% branca pura */
@@ -177,35 +178,29 @@
     print-color-adjust: exact !important;
   }
 
-  /* Quebra de página controlada entre páginas da proposta */
+  /* Quebra de página: fluxo contínuo. Não forçar quebra antes/depois desnecessariamente */
   .print-page-break {
-    page-break-before: always !important;
-    break-before: page !important;
-    display: block !important;
+    display: none !important;
     height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
     border: none !important;
   }
 
-  /* Evita quebras indesejadas no meio de blocos, linhas de tabela, assinaturas e totais */
-  .print-avoid-break,
-  tr,
-  tbody,
-  .grid,
-  .space-y-4 > div {
+  /* Evita quebras indesejadas no meio de blocos de assinatura e linhas individuais */
+  .print-avoid-break {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
 
-  /* Container da folha de proposta impresso */
+  /* Container da folha de proposta impresso: fluxo contínuo e sem padding extra artificial */
   #proposal-sheet,
   .proposal-document-sheet {
     max-width: 100% !important;
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
-    padding-bottom: 22mm !important;
+    padding-bottom: 0 !important;
     border: none !important;
     box-shadow: none !important;
     border-radius: 0 !important;
@@ -221,28 +216,30 @@
     margin: 0 !important;
   }
 
-  /* Rodapé institucional fixo no rodapé de CADA página impressa, nunca deslocado para cima */
+  /* Rodapé institucional fixo na margem inferior da página sem invadir o conteúdo */
   .print-fixed-footer {
     display: block !important;
     position: fixed !important;
-    bottom: 0 !important;
+    bottom: -12mm !important;
     left: 0 !important;
     right: 0 !important;
     width: 100% !important;
     background: #ffffff !important;
     background-color: #ffffff !important;
     color: #94a3b8 !important;
-    font-size: 10px !important;
+    font-size: 9px !important;
     text-align: center !important;
-    padding-top: 6px !important;
-    padding-bottom: 4px !important;
+    padding-top: 4px !important;
+    padding-bottom: 2px !important;
     border-top: 1px solid #e2e8f0 !important;
     z-index: 9999 !important;
   }
 
-  /* Tabelas com quebra controlada sem cortar linhas ao meio */
+  /* Tabelas com fluxo contínuo e quebra atômica de linha (sem cortar linha ao meio) */
   table {
     page-break-inside: auto;
+    break-inside: auto;
+    width: 100% !important;
   }
 
   thead {
@@ -251,6 +248,11 @@
 
   tfoot {
     display: table-footer-group;
+  }
+
+  tbody {
+    page-break-inside: auto;
+    break-inside: auto;
   }
 
   tr {

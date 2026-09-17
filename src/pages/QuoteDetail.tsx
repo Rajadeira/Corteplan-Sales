@@ -558,10 +558,10 @@ export default function QuoteDetail() {
           className="proposal-document-sheet max-w-[840px] mx-auto bg-white border border-slate-200 sm:rounded-xl shadow-lg print:border-none print:shadow-none print:max-w-none print:p-0"
         >
           {/* =========================================================
-              PÁGINA 1 — CABEÇALHO, ITENS, OBSERVAÇÕES E TOTAIS
+              DOCUMENTO CORTEPLAN — CABEÇALHO, ITENS, OBSERVAÇÕES E TOTAIS
               (Com diagramação ajustável e ordenação personalizada)
               ========================================================= */}
-          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-[13px] leading-normal space-y-4 bg-white">
+          <section className="p-8 sm:p-12 print:p-0 print:space-y-3 font-sans text-slate-900 text-[13px] leading-normal space-y-4 bg-white">
             {layoutConfig.page1Order.map((blockId) => {
               if (blockId === 'header') {
                 return (
@@ -904,12 +904,12 @@ export default function QuoteDetail() {
           </section>
 
           {/* =========================================================
-              PÁGINA 2 — CONDIÇÕES COMERCIAIS, PARCELAS E ASSINATURA
-              (Com quebra explícita de página na impressão A4)
+              CONDIÇÕES COMERCIAIS, PARCELAS E ASSINATURA
+              (Fluxo contínuo com separador na tela)
               ========================================================= */}
-          <div className="print-page-break border-t-2 border-dashed border-slate-300 print:border-none" />
+          <div className="print-page-break border-t-2 border-dashed border-slate-300 print:border-none print:hidden print:m-0 print:p-0" />
 
-          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-xs leading-normal space-y-4 bg-white print:pt-4">
+          <section className="p-8 sm:p-12 print:p-0 print:pt-2 print:space-y-3 font-sans text-slate-900 text-xs leading-normal space-y-4 bg-white">
             {layoutConfig.page2Order.map((blockId) => {
               if (blockId === 'conditions_summary') {
                 return (
