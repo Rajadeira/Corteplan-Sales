@@ -43,7 +43,6 @@ const navItems = [
   { name: 'Orçamentos', path: '/orcamentos', icon: FileText },
   { name: 'Pedidos', path: '/pedidos', icon: PackageCheck },
   { name: 'Usuários', path: '/usuarios', icon: UserCheck },
-  { name: 'Novo Orçamento', path: '/orcamentos/novo', icon: PlusCircle },
 ]
 
 export default function Layout() {
