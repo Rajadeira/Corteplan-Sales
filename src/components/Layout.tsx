@@ -165,16 +165,16 @@ export default function Layout() {
         {/* Brand / Logo */}
         <div className="flex h-16 items-center justify-between px-4 border-b border-slate-800/80">
           <Link to="/" className="flex items-center gap-3 overflow-hidden group">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#1E3A5F] to-blue-600 text-white shadow-md shadow-blue-950/30 group-hover:scale-105 transition-transform duration-200">
-              <Armchair className="h-5 w-5 text-amber-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#E66812] to-amber-600 text-white shadow-md shadow-orange-950/30 group-hover:scale-105 transition-transform duration-200 font-extrabold text-lg tracking-wider">
+              C
             </div>
             {!collapsed && (
               <div className="flex flex-col truncate">
-                <span className="font-bold text-white text-base tracking-tight font-sans">
-                  Mobiliário & Visual
+                <span className="font-bold text-white text-base tracking-wider font-sans">
+                  CORTEPLAN
                 </span>
                 <span className="text-[11px] text-slate-400 font-medium tracking-wide uppercase">
-                  Gestão Interna
+                  Gestão Comercial
                 </span>
               </div>
             )}
@@ -479,7 +479,7 @@ export default function Layout() {
 
         {/* Discreto Footer */}
         <footer className="border-t border-slate-200/80 bg-white/50 py-4 px-6 text-center text-xs text-slate-500 print:hidden">
-          &copy; 2025 Mobiliário & Visual — Sistema de Gestão Interno. Todos os direitos reservados.
+          &copy; 2026 CORTEPLAN — Gestão Comercial & Orçamentos. Todos os direitos reservados.
         </footer>
       </div>
     </div>

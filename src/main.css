@@ -127,12 +127,22 @@
 
 @media print {
   @page {
-    margin: 1.5cm;
+    margin: 1.2cm 1.5cm;
     size: A4 portrait;
   }
   body {
     background: #ffffff !important;
     color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .print-page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+  .print-avoid-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 }
 

@@ -7,14 +7,10 @@ import {
   CheckCircle,
   XCircle,
   Send,
-  Building,
-  Phone,
-  Mail,
-  Calendar,
-  Clock,
   Loader2,
-  Armchair,
-  FileText,
+  Clock,
+  Sparkles,
+  QrCode,
 } from 'lucide-react'
 import { quoteService } from '@/services/quotes'
 import { useAuth } from '@/contexts/AuthContext'
@@ -23,11 +19,12 @@ import {
   formatCurrencyBRL,
   formatDateBR,
   formatDateTimeBR,
-  formatQuoteNumber,
+  formatDateExtendedBR,
   maskPhoneBR,
+  CORTEPLAN_COMPANY_INFO,
 } from '@/types'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import CorteplanLogo from '@/components/CorteplanLogo'
 import { toast } from 'sonner'
 
 export default function QuoteDetail() {
@@ -57,21 +54,21 @@ export default function QuoteDetail() {
     loadQuote()
   }, [id])
 
-  // Trigger print if ?print=true is present in query parameters
+  // Trigger print se ?print=true estiver na URL
   useEffect(() => {
     if (searchParams.get('print') === 'true' && quote && !loading) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         window.print()
       }, 500)
+      return () => clearTimeout(timer)
     }
   }, [searchParams, quote, loading])
 
-  // Atualização de status
   const handleUpdateStatus = async (newStatus: QuoteStatus) => {
     if (!id || !quote) return
     setStatusLoading(true)
     try {
-      const userName = user?.name || 'Administrador'
+      const userName = user?.name || 'Gustavo Tibério'
       const updated = await quoteService.updateStatus(id, newStatus, userName)
       setQuote(updated)
       toast.success(`Status atualizado para "${newStatus}"!`)
@@ -117,7 +114,7 @@ export default function QuoteDetail() {
       <div className="flex h-96 items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-slate-500">
           <Loader2 className="h-8 w-8 animate-spin text-[#1E3A5F]" />
-          <p className="text-sm">Carregando detalhes do orçamento...</p>
+          <p className="text-sm">Carregando proposta da Corteplan...</p>
         </div>
       </div>
     )
@@ -136,10 +133,47 @@ export default function QuoteDetail() {
   }
 
   const client = quote.expand?.client
-  const discountAmount = (quote.subtotal * (quote.discount_percent || 0)) / 100
+
+  // Totais: produtos = subtotal; se tiver impostos detalhados
+  const produtosTotal = quote.subtotal || 0
+  const icmsVal = quote.icms || 0
+  const ipiVal = quote.ipi || 0
+  const pisVal = quote.pis || 0
+  const cofinsVal = quote.cofins || 0
+  const hasTaxBreakdown = icmsVal > 0 || ipiVal > 0 || pisVal > 0 || cofinsVal > 0
+
+  const sellerName = quote.seller || user?.name || 'Gustavo Tibério'
+  const validityDays = quote.validity_days || 5
+  const deliveryTerm = quote.delivery_term || 'À Combinar'
+  const paymentTerms = quote.payment_terms || 'Entrada 50% + 2x'
+
+  // Parcelas (se não preenchidas, gera uma padrão baseada no total)
+  const installments =
+    quote.installments && quote.installments.length > 0
+      ? quote.installments
+      : [
+          {
+            number: 1,
+            date: quote.created ? quote.created.split('T')[0] : '2026-09-14',
+            method: 'Boleto',
+            value: quote.total ? Math.round(quote.total * 0.5 * 100) / 100 : 0,
+          },
+          {
+            number: 2,
+            date: quote.created ? quote.created.split('T')[0] : '2026-10-14',
+            method: 'Boleto',
+            value: quote.total ? Math.round(quote.total * 0.25 * 100) / 100 : 0,
+          },
+          {
+            number: 3,
+            date: quote.created ? quote.created.split('T')[0] : '2026-11-13',
+            method: 'Boleto',
+            value: quote.total ? Math.round(quote.total * 0.25 * 100) / 100 : 0,
+          },
+        ]
 
   return (
-    <div className="space-y-6 pb-16">
+    <div className="space-y-6 pb-16 print:p-0 print:m-0 print:space-y-0">
       {/* Botão de retorno (Escondido em impressão) */}
       <div className="print:hidden">
         <Button
@@ -153,18 +187,18 @@ export default function QuoteDetail() {
         </Button>
       </div>
 
-      {/* Header Interativo (Escondido na impressão) */}
+      {/* Header da Página no App (Escondido na impressão) */}
       <div className="print:hidden bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <span className="font-mono text-3xl font-extrabold text-[#1E3A5F] tracking-tight">
-              {formatQuoteNumber(quote.quote_number)}
+              Proposta Nº {quote.quote_number}
             </span>
             {getStatusBadge(quote.status)}
           </div>
           <p className="text-xs text-slate-500">
-            Emitido em {formatDateBR(quote.created)} &bull; Atualizado em{' '}
-            {formatDateBR(quote.updated)}
+            Layout no padrão oficial <strong>CORTEPLAN</strong> &bull; Emitido em{' '}
+            {formatDateBR(quote.created)}
           </p>
         </div>
 
@@ -175,7 +209,7 @@ export default function QuoteDetail() {
             className="rounded-xl border-slate-300 text-slate-700 hover:bg-slate-50 font-medium"
           >
             <Edit className="h-4 w-4 mr-1.5 text-amber-600" />
-            Editar
+            Editar Proposta
           </Button>
 
           <Button
@@ -188,17 +222,18 @@ export default function QuoteDetail() {
         </div>
       </div>
 
-      {/* Painel de Gestão de Ciclo de Vida do Status (Escondido na impressão) */}
-      <div className="print:hidden bg-slate-900 text-white p-6 rounded-2xl shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Painel de Gestão de Status comercial (Escondido na impressão) */}
+      <div className="print:hidden bg-slate-900 text-white p-5 rounded-2xl shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block">
-            Gestão de Ciclo de Vida
+            Gestão Comercial
           </span>
-          <h3 className="text-base font-bold text-white mt-0.5">
+          <h3 className="text-sm font-bold text-white mt-0.5">
             Alterar status comercial desta proposta
           </h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Cada mudança atualiza automaticamente a linha do tempo com data, hora e responsável.
+          <p className="text-xs text-slate-400 mt-0.5">
+            Vendedor responsável: <strong className="text-white">{sellerName}</strong> &bull;
+            Validade: {validityDays} dias
           </p>
         </div>
 
@@ -241,209 +276,392 @@ export default function QuoteDetail() {
         </div>
       </div>
 
-      {/* Grid Principal: Dados do Orçamento + Timeline */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Documento Principal: 8 colunas (12 colunas em impressão) */}
-        <div className="lg:col-span-8 print:lg:col-span-12 space-y-6">
-          {/* Card do Cliente */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Dados do Cliente
-              </h3>
-              {client && (
-                <Link
-                  to={`/clientes/${client.id}`}
-                  className="text-xs font-semibold text-[#1E3A5F] hover:underline print:hidden"
+      {/* =========================================================================
+          DOCUMENTO OFICIAL CORTEPLAN — MODELO FIEL À FOLHA A4 IMPRESSA
+          ========================================================================= */}
+      <div className="bg-slate-100 p-2 sm:p-6 rounded-2xl print:bg-white print:p-0 print:m-0 print:rounded-none">
+        {/* Folha / Contêiner da Proposta */}
+        <div className="max-w-[840px] mx-auto bg-white border border-slate-200 sm:rounded-xl shadow-lg print:border-none print:shadow-none print:max-w-none print:p-0">
+          {/* =========================================================
+              PÁGINA 1 — CABEÇALHO, ITENS, OBSERVAÇÕES E TOTAIS
+              ========================================================= */}
+          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-[13px] leading-normal">
+            {/* Topo: Logo CORTEPLAN + QR Code + Dados da Empresa */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-6 border-b border-slate-200">
+              {/* Logo CORTEPLAN */}
+              <div className="flex items-center gap-4">
+                <CorteplanLogo width={190} height={46} />
+
+                {/* QR Code ilustrativo como no documento original */}
+                <div
+                  className="hidden sm:flex flex-col items-center justify-center p-1 border border-slate-300 rounded bg-white"
+                  title="Código de autenticidade da proposta"
                 >
-                  Ver cadastro completo &rarr;
-                </Link>
-              )}
-            </div>
-
-            {client ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs sm:text-sm">
-                <div>
-                  <span className="text-[11px] text-slate-400 block">Nome do Cliente</span>
-                  <span className="font-bold text-slate-900 text-base">{client.name}</span>
-                  {client.company && (
-                    <span className="text-slate-600 block mt-0.5">{client.company}</span>
-                  )}
-                </div>
-
-                <div className="space-y-1 text-slate-600">
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-3.5 w-3.5 text-slate-400" />
-                    <span>{maskPhoneBR(client.phone)}</span>
-                  </div>
-                  {client.email && (
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-3.5 w-3.5 text-slate-400" />
-                      <span>{client.email}</span>
-                    </div>
-                  )}
-                  {client.address && (
-                    <div className="text-slate-500 pt-1">
-                      {client.address} {client.city ? `• ${client.city}` : ''}
-                    </div>
-                  )}
+                  <QrCode className="h-10 w-10 text-slate-800" />
                 </div>
               </div>
-            ) : (
-              <p className="text-xs text-slate-500">Dados do cliente não vinculados.</p>
-            )}
-          </div>
 
-          {/* Tabela de Itens */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Especificação dos Itens
-            </h3>
+              {/* Dados Fixos da CORTEPLAN à direita */}
+              <div className="text-right text-[11px] sm:text-xs text-slate-600 leading-tight space-y-0.5">
+                <div className="font-bold text-slate-900 tracking-wider">
+                  {CORTEPLAN_COMPANY_INFO.name}
+                </div>
+                <div>CNPJ: {CORTEPLAN_COMPANY_INFO.cnpj}</div>
+                <div>{CORTEPLAN_COMPANY_INFO.address}</div>
+                <div>Telefone: {CORTEPLAN_COMPANY_INFO.phone}</div>
+                <div>E-mail: {CORTEPLAN_COMPANY_INFO.email}</div>
+              </div>
+            </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+            {/* Bloco Cliente + Número da Proposta & Data */}
+            <div className="pt-6 pb-6 flex flex-col sm:flex-row justify-between items-start gap-4">
+              {/* Dados do CLIENTE */}
+              <div className="space-y-0.5 text-xs text-slate-700 max-w-md">
+                <div className="font-bold text-slate-900 text-sm tracking-tight uppercase">
+                  {client?.name || 'CLIENTE NÃO IDENTIFICADO'}
+                  {client?.company && client.company !== client.name ? ` - ${client.company}` : ''}
+                </div>
+                <div className="text-slate-600">
+                  <span className="font-medium text-slate-700">CNPJ/CPF: </span>
+                  {client?.notes?.includes('CNPJ:')
+                    ? client.notes.split('CNPJ:')[1]?.split('\n')[0]?.trim()
+                    : 'Conforme cadastro'}
+                </div>
+                <div>
+                  {client?.address
+                    ? `${client.address}${client.city ? ` - ${client.city}` : ''}`
+                    : 'Endereço cadastrado'}
+                </div>
+                <div>
+                  <span className="font-medium text-slate-700">Telefone: </span>
+                  {maskPhoneBR(client?.phone || '')}
+                </div>
+                {client?.email && (
+                  <div>
+                    <span className="font-medium text-slate-700">E-mail: </span>
+                    {client.email}
+                  </div>
+                )}
+                <div>
+                  <span className="font-medium text-slate-700">Contato: </span>
+                  {client?.name?.split(' ')[0] || 'Responsável'}
+                </div>
+              </div>
+
+              {/* Título: "Proposta Nº 139" + Data por extenso */}
+              <div className="text-left sm:text-right space-y-1">
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                  Proposta Nº {quote.quote_number}
+                </h1>
+                <p className="text-xs text-slate-600">
+                  {formatDateExtendedBR(quote.created, CORTEPLAN_COMPANY_INFO.city)}
+                </p>
+              </div>
+            </div>
+
+            {/* Parágrafo introdutório fixo */}
+            <div className="py-2 mb-4 text-xs text-slate-700">
+              <p>
+                Atendendo à sua solicitação, apresentamos proposta com preços e condições técnicas e
+                comerciais para o fornecimento solicitado:
+              </p>
+            </div>
+
+            {/* Tabela de Itens */}
+            <div className="overflow-x-auto mb-6">
+              <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="py-2.5 px-3">#</th>
-                    <th className="py-2.5 px-3">Descrição Técnica</th>
-                    <th className="py-2.5 px-3 text-center">Qtd.</th>
-                    <th className="py-2.5 px-3 text-center">Un.</th>
-                    <th className="py-2.5 px-3 text-right">Valor Unit.</th>
-                    <th className="py-2.5 px-3 text-right">Subtotal</th>
+                  <tr className="border-t border-b border-slate-300 bg-slate-50/60 font-bold text-slate-900">
+                    <th className="py-2 px-2 w-10 text-center">Item</th>
+                    <th className="py-2 px-3">Descrição</th>
+                    <th className="py-2 px-3 text-center w-20">Quant.</th>
+                    <th className="py-2 px-3 text-right w-28">Valor Unit.</th>
+                    <th className="py-2 px-3 text-right w-28">Valor Total</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
+                <tbody className="divide-y divide-slate-200">
                   {quote.items?.map((item, index) => {
-                    const itemSubtotal = (item.quantity || 0) * (item.unit_price || 0)
+                    const itemTotal = (item.quantity || 0) * (item.unit_price || 0)
                     return (
-                      <tr key={index} className="hover:bg-slate-50/70">
-                        <td className="py-3 px-3 text-slate-400 font-mono text-xs">
-                          {String(index + 1).padStart(2, '0')}
-                        </td>
-                        <td className="py-3 px-3 font-medium text-slate-900 max-w-sm">
-                          {item.description}
-                        </td>
-                        <td className="py-3 px-3 text-center font-mono">{item.quantity}</td>
-                        <td className="py-3 px-3 text-center text-slate-500">{item.unit}</td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-700">
-                          {formatCurrencyBRL(item.unit_price)}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
-                          {formatCurrencyBRL(itemSubtotal)}
-                        </td>
-                      </tr>
+                      <React.Fragment key={index}>
+                        <tr className="align-top">
+                          <td className="py-3 px-2 text-center font-bold text-slate-800">
+                            {index + 1}
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="font-bold text-slate-900 text-[13px]">
+                              {item.description}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 text-center whitespace-nowrap text-slate-700">
+                            {item.quantity} {item.unit || 'un'}
+                          </td>
+                          <td className="py-3 px-3 text-right whitespace-nowrap font-mono text-slate-800">
+                            {formatCurrencyBRL(item.unit_price)}
+                          </td>
+                          <td className="py-3 px-3 text-right whitespace-nowrap font-mono font-bold text-slate-900">
+                            {formatCurrencyBRL(itemTotal)}
+                          </td>
+                        </tr>
+
+                        {/* Linha adicional com Imposto do item (se houver) e Descrição Técnica longa */}
+                        {(item.tax || item.technical_description) && (
+                          <tr className="bg-slate-50/40">
+                            <td></td>
+                            <td colSpan={4} className="pb-3 px-3 pt-0">
+                              {item.tax && item.tax > 0 ? (
+                                <div className="text-right text-[11px] text-slate-500 font-mono italic mb-1">
+                                  Imp: {formatCurrencyBRL(item.tax)}
+                                </div>
+                              ) : null}
+                              {item.technical_description && (
+                                <p className="text-[11px] text-slate-600 leading-relaxed whitespace-pre-line text-justify">
+                                  {item.technical_description}
+                                </p>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     )
                   })}
                 </tbody>
               </table>
             </div>
 
-            {/* Resumo Financeiro */}
-            <div className="pt-4 border-t border-slate-200 flex justify-end">
-              <div className="w-full sm:w-72 space-y-2 text-xs sm:text-sm">
-                <div className="flex justify-between text-slate-600">
-                  <span>Subtotal</span>
-                  <span className="font-mono font-semibold">
-                    {formatCurrencyBRL(quote.subtotal)}
-                  </span>
+            {/* Observações da Proposta + Bloco de Totais à direita */}
+            <div className="pt-4 border-t border-slate-300 grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+              {/* Observações da Proposta (Lado Esquerdo - 7 colunas) */}
+              <div className="md:col-span-7 space-y-2 text-xs">
+                <div className="font-bold text-slate-900 uppercase tracking-wide text-[11px]">
+                  Observações da Proposta
                 </div>
 
+                <div className="text-[11px] text-slate-600 leading-relaxed space-y-1.5 whitespace-pre-line">
+                  {quote.observations ? (
+                    <p>{quote.observations}</p>
+                  ) : (
+                    <>
+                      <p>
+                        <strong>Prazo de entrega:</strong> {deliveryTerm}
+                      </p>
+                      <p>
+                        <strong>Pagamento:</strong> {paymentTerms}
+                      </p>
+                      <p>
+                        Este orçamento contempla exclusivamente os itens, quantidades, materiais,
+                        acabamentos e especificações técnicas descritos na proposta.
+                      </p>
+                      <p>
+                        Itens, serviços ou soluções não mencionados expressamente estão fora do
+                        escopo e serão cotados separadamente, caso solicitados.
+                      </p>
+                      <p>
+                        Alterações ou inclusões após a aprovação poderão acarretar revisão de
+                        valores, prazos e condições comerciais.
+                      </p>
+                      <p>
+                        Componentes elétricos, quando aplicáveis, serão fornecidos prontos para
+                        conexão, cabendo ao cliente a disponibilização do ponto de alimentação
+                        conforme especificação técnica.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Bloco de Totais (Lado Direito - 5 colunas) */}
+              <div className="md:col-span-5 bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+                <div className="flex justify-between items-center text-slate-700">
+                  <span>Produtos:</span>
+                  <span className="font-mono font-medium">{formatCurrencyBRL(produtosTotal)}</span>
+                </div>
+
+                {hasTaxBreakdown ? (
+                  <>
+                    <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                      <span>ICMS:</span>
+                      <span className="font-mono">{formatCurrencyBRL(icmsVal)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                      <span>IPI:</span>
+                      <span className="font-mono">{formatCurrencyBRL(ipiVal)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                      <span>PIS:</span>
+                      <span className="font-mono">{formatCurrencyBRL(pisVal)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                      <span>COFINS:</span>
+                      <span className="font-mono">{formatCurrencyBRL(cofinsVal)}</span>
+                    </div>
+                  </>
+                ) : null}
+
                 {quote.discount_percent > 0 && (
-                  <div className="flex justify-between text-emerald-600 font-medium">
-                    <span>Desconto ({quote.discount_percent}%)</span>
-                    <span className="font-mono">- {formatCurrencyBRL(discountAmount)}</span>
+                  <div className="flex justify-between items-center text-emerald-700 text-[11px]">
+                    <span>Desconto ({quote.discount_percent}%):</span>
+                    <span className="font-mono">
+                      - {formatCurrencyBRL((produtosTotal * quote.discount_percent) / 100)}
+                    </span>
                   </div>
                 )}
 
                 <div className="pt-2 border-t-2 border-slate-900 flex justify-between items-center">
-                  <span className="font-bold text-slate-900 uppercase tracking-wider text-xs">
-                    Total Geral
-                  </span>
-                  <span className="font-mono text-xl sm:text-2xl font-extrabold text-[#1E3A5F]">
+                  <span className="font-extrabold text-slate-900 text-sm uppercase">Total:</span>
+                  <span className="font-mono text-lg font-black text-slate-950">
                     {formatCurrencyBRL(quote.total)}
                   </span>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* Observações / Condições Comerciais */}
-          {quote.observations && (
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Condições Comerciais & Observações
-              </h3>
-              <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50 p-4 rounded-xl border border-slate-100">
-                {quote.observations}
-              </p>
-            </div>
-          )}
+          {/* =========================================================
+              PÁGINA 2 — CONDIÇÕES COMERCIAIS, PARCELAS E ASSINATURA
+              (Com quebra explícita de página na impressão A4)
+              ========================================================= */}
+          <div className="print-page-break border-t-2 border-dashed border-slate-300 print:border-none" />
 
-          {/* Assinatura do Cliente para Impressão */}
-          <div className="hidden print:block pt-16 mt-8 border-t border-slate-300">
-            <div className="grid grid-cols-2 gap-12 text-center text-xs text-slate-600">
-              <div>
-                <div className="border-t border-slate-900 pt-2 font-semibold">
-                  Mobiliário & Visual Ltda.
+          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-xs leading-normal">
+            {/* Header da Página 2 / Resumo Comercial Superior */}
+            <div className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-300 text-xs">
+              <div className="space-y-1">
+                <div>
+                  <span className="font-bold text-slate-900">Vendedor: </span>
+                  <span className="text-slate-700">{sellerName}</span>
                 </div>
-                <div>Responsável Técnico Comercial</div>
+                <div>
+                  <span className="font-bold text-slate-900">Prazo de Entrega: </span>
+                  <span className="text-slate-700">{deliveryTerm}</span>
+                </div>
               </div>
-              <div>
-                <div className="border-t border-slate-900 pt-2 font-semibold">
-                  {client?.name || 'Cliente'}
+
+              <div className="space-y-1 text-right">
+                <div>
+                  <span className="font-bold text-slate-900">Validade da Proposta: </span>
+                  <span className="text-slate-700">{validityDays} dias.</span>
                 </div>
-                <div>De Acordo / Assinatura de Aprovação</div>
+                <div>
+                  <span className="font-bold text-slate-900">Cond. pagamento: </span>
+                  <span className="text-slate-700">{paymentTerms}</span>
+                </div>
               </div>
             </div>
-          </div>
+
+            {/* Texto de validade & cortesia */}
+            <div className="py-4 space-y-1 text-xs text-slate-700">
+              <p>A validade desta proposta é de {validityDays} dias.</p>
+              <p>Ficamos à disposição para quaisquer esclarecimentos adicionais.</p>
+            </div>
+
+            {/* Tabela de Parcelas */}
+            <div className="mt-4 mb-8">
+              <div className="font-bold text-slate-900 uppercase tracking-wide text-[11px] mb-2">
+                Programação de Parcelas / Pagamento
+              </div>
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-t border-b border-slate-300 bg-slate-50/70 font-bold text-slate-900">
+                    <th className="py-2 px-3 w-20">Parcela</th>
+                    <th className="py-2 px-3">Data</th>
+                    <th className="py-2 px-3">Forma de Pagamento</th>
+                    <th className="py-2 px-3 text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {installments.map((inst, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/50">
+                      <td className="py-2 px-3 font-semibold text-slate-800">{inst.number}</td>
+                      <td className="py-2 px-3 text-slate-700 font-mono">
+                        {formatDateBR(inst.date)}
+                      </td>
+                      <td className="py-2 px-3 text-slate-700">{inst.method}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                        {formatCurrencyBRL(inst.value)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Área de Assinatura com três campos: Nome Legível, Assinatura, Data */}
+            <div className="pt-12 mt-12 border-t border-slate-300 print-avoid-break">
+              <div className="max-w-md mx-auto space-y-8 text-center text-xs text-slate-700">
+                <div className="space-y-1">
+                  <div className="border-b border-slate-900 w-full h-8" />
+                  <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
+                    Nome Legível
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="border-b border-slate-900 w-full h-8" />
+                  <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
+                    Assinatura
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="border-b border-slate-900 w-full h-8" />
+                  <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider pt-1">
+                    Data
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Rodapé da Proposta */}
+            <div className="pt-10 text-center text-[11px] text-slate-400">
+              {CORTEPLAN_COMPANY_INFO.name} &bull; CNPJ: {CORTEPLAN_COMPANY_INFO.cnpj} &bull;{' '}
+              {CORTEPLAN_COMPANY_INFO.phone} &bull; {CORTEPLAN_COMPANY_INFO.email}
+            </div>
+          </section>
         </div>
+      </div>
 
-        {/* Linha do Tempo de Status: 4 colunas (Escondido em impressão) */}
-        <div className="lg:col-span-4 print:hidden space-y-6">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">
-              Linha do Tempo de Status
-            </h3>
+      {/* Linha do Tempo de Status (Apenas na tela, escondida na impressão) */}
+      <div className="print:hidden bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">
+          Linha do Tempo de Auditoria & Status
+        </h3>
 
-            {!quote.status_history || quote.status_history.length === 0 ? (
-              <p className="text-xs text-slate-400">Nenhum evento registrado.</p>
-            ) : (
-              <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
-                {quote.status_history.map((entry, index) => {
-                  let dotColor = 'bg-slate-400'
-                  if (entry.status === 'Aprovado') dotColor = 'bg-emerald-500'
-                  if (entry.status === 'Enviado') dotColor = 'bg-amber-500'
-                  if (entry.status === 'Rejeitado') dotColor = 'bg-red-500'
+        {!quote.status_history || quote.status_history.length === 0 ? (
+          <p className="text-xs text-slate-400">Nenhum evento registrado ainda.</p>
+        ) : (
+          <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+            {quote.status_history.map((entry, index) => {
+              let dotColor = 'bg-slate-400'
+              if (entry.status === 'Aprovado') dotColor = 'bg-emerald-500'
+              if (entry.status === 'Enviado') dotColor = 'bg-amber-500'
+              if (entry.status === 'Rejeitado') dotColor = 'bg-red-500'
 
-                  return (
-                    <div key={index} className="relative group">
-                      {/* Ponto indicador colorido na timeline */}
-                      <span
-                        className={`absolute -left-6 top-1 h-3.5 w-3.5 rounded-full border-2 border-white ring-2 ring-slate-100 ${dotColor}`}
-                      />
-
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-slate-900">
-                            Status: {entry.status}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                          <Clock className="h-3 w-3" />
-                          <span>{formatDateTimeBR(entry.changed_at)}</span>
-                        </div>
-                        <div className="text-[11px] text-slate-400">
-                          Por:{' '}
-                          <span className="font-medium text-slate-600">{entry.changed_by}</span>
-                        </div>
-                      </div>
+              return (
+                <div key={index} className="relative group">
+                  <span
+                    className={`absolute -left-6 top-1 h-3.5 w-3.5 rounded-full border-2 border-white ring-2 ring-slate-100 ${dotColor}`}
+                  />
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-slate-900">
+                        Status: {entry.status}
+                      </span>
                     </div>
-                  )
-                })}
-              </div>
-            )}
+                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                      <Clock className="h-3 w-3" />
+                      <span>{formatDateTimeBR(entry.changed_at)}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Registrado por:{' '}
+                      <span className="font-medium text-slate-600">{entry.changed_by}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

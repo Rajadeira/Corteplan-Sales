@@ -11,6 +11,17 @@ export interface CreateQuoteData {
   observations?: string
   status_history?: StatusHistoryEntry[]
   quote_number?: number
+
+  // Novos campos Corteplan
+  icms?: number
+  ipi?: number
+  pis?: number
+  cofins?: number
+  seller?: string
+  validity_days?: number
+  delivery_term?: string
+  payment_terms?: string
+  installments?: import('@/types').QuoteInstallment[]
 }
 
 export type UpdateQuoteData = Partial<CreateQuoteData>

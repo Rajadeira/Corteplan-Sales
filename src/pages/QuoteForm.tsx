@@ -13,11 +13,13 @@ import {
   Mail,
   Loader2,
   CheckCircle,
+  Calendar,
+  Percent,
 } from 'lucide-react'
 import { quoteService } from '@/services/quotes'
 import { clientService } from '@/services/clients'
 import { useAuth } from '@/contexts/AuthContext'
-import type { ClientRecord, QuoteItem, QuoteRecord } from '@/types'
+import type { ClientRecord, QuoteItem, QuoteRecord, QuoteInstallment } from '@/types'
 import { formatCurrencyBRL, formatQuoteNumber, maskPhoneBR } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,19 +56,43 @@ export default function QuoteForm() {
   const [clientSearchQuery, setClientSearchQuery] = useState('')
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false)
 
-  // Itens do orçamento
+  // Itens do orçamento (com tax e technical_description)
   const [items, setItems] = useState<QuoteItem[]>([
     {
       description: '',
       quantity: 1,
       unit: 'un',
       unit_price: 0,
+      tax: 0,
+      technical_description: '',
     },
   ])
 
   // Desconto e Observações
   const [discountPercent, setDiscountPercent] = useState<number>(0)
   const [observations, setObservations] = useState<string>('')
+
+  // Novos campos CORTEPLAN
+  const [seller, setSeller] = useState<string>('Gustavo Tibério')
+  const [validityDays, setValidityDays] = useState<number>(5)
+  const [deliveryTerm, setDeliveryTerm] = useState<string>('À Combinar')
+  const [paymentTerms, setPaymentTerms] = useState<string>('Entrada 50% + 2x')
+
+  // Impostos
+  const [icms, setIcms] = useState<number>(0)
+  const [ipi, setIpi] = useState<number>(0)
+  const [pis, setPis] = useState<number>(0)
+  const [cofins, setCofins] = useState<number>(0)
+
+  // Parcelas
+  const [installments, setInstallments] = useState<QuoteInstallment[]>([
+    {
+      number: 1,
+      date: new Date().toISOString().split('T')[0],
+      method: 'Boleto',
+      value: 0,
+    },
+  ])
 
   // Estado de carregamento e envio
   const [loading, setLoading] = useState(true)
@@ -93,15 +119,52 @@ export default function QuoteForm() {
           setItems(
             q.items && q.items.length > 0
               ? q.items
-              : [{ description: '', quantity: 1, unit: 'un', unit_price: 0 }],
+              : [
+                  {
+                    description: '',
+                    quantity: 1,
+                    unit: 'un',
+                    unit_price: 0,
+                    tax: 0,
+                    technical_description: '',
+                  },
+                ],
           )
           setDiscountPercent(q.discount_percent || 0)
           setObservations(q.observations || '')
+
+          setSeller(q.seller || user?.name || 'Gustavo Tibério')
+          setValidityDays(q.validity_days !== undefined ? q.validity_days : 5)
+          setDeliveryTerm(q.delivery_term || 'À Combinar')
+          setPaymentTerms(q.payment_terms || 'Entrada 50% + 2x')
+
+          setIcms(q.icms || 0)
+          setIpi(q.ipi || 0)
+          setPis(q.pis || 0)
+          setCofins(q.cofins || 0)
+
+          if (q.installments && q.installments.length > 0) {
+            setInstallments(q.installments)
+          } else {
+            // Default inicial
+            const today = new Date().toISOString().split('T')[0]
+            setInstallments([
+              {
+                number: 1,
+                date: today,
+                method: 'Boleto',
+                value: q.total ? Math.round(q.total * 0.5 * 100) / 100 : 0,
+              },
+            ])
+          }
         } else {
-          // Novo orçamento: obter próximo número sequencial garantido no servidor
+          // Novo orçamento
           const next = await quoteService.getNextQuoteNumber()
           setQuoteNumber(next.nextNumber)
           setFormattedNumber(next.formatted)
+          if (user?.name) {
+            setSeller(user.name)
+          }
         }
       } catch (err) {
         console.error('Erro na inicialização:', err)
@@ -136,7 +199,82 @@ export default function QuoteForm() {
   }, 0)
 
   const discountAmount = (subtotal * (Number(discountPercent) || 0)) / 100
-  const total = Math.max(0, subtotal - discountAmount)
+  const taxesTotal =
+    (Number(icms) || 0) + (Number(ipi) || 0) + (Number(pis) || 0) + (Number(cofins) || 0)
+  // Total da proposta: se houver impostos discriminados, soma ao subtotal líquido; caso contrário subtotal - desconto
+  const total = Math.max(0, subtotal - discountAmount + taxesTotal)
+
+  // Gerador automático de parcelas sugeridas a partir do total
+  const handleAutoGenerateInstallments = (count: number) => {
+    if (total <= 0) {
+      toast.warning('Adicione produtos para gerar as parcelas com base no valor total.')
+      return
+    }
+    const newInstallments: QuoteInstallment[] = []
+    const baseValue = Math.floor((total / count) * 100) / 100
+    const diff = Math.round((total - baseValue * count) * 100) / 100
+
+    const today = new Date()
+
+    for (let i = 1; i <= count; i++) {
+      const d = new Date(today)
+      d.setMonth(d.getMonth() + (i - 1))
+      newInstallments.push({
+        number: i,
+        date: d.toISOString().split('T')[0],
+        method: 'Boleto',
+        value: i === 1 ? Math.round((baseValue + diff) * 100) / 100 : baseValue,
+      })
+    }
+    setInstallments(newInstallments)
+    toast.success(`${count} parcelas geradas automaticamente!`)
+  }
+
+  // Adicionar parcela manual
+  const handleAddInstallment = () => {
+    const nextNum = installments.length + 1
+    const lastDate =
+      installments.length > 0
+        ? installments[installments.length - 1].date
+        : new Date().toISOString().split('T')[0]
+    const d = new Date(lastDate)
+    d.setMonth(d.getMonth() + 1)
+
+    setInstallments((prev) => [
+      ...prev,
+      {
+        number: nextNum,
+        date: d.toISOString().split('T')[0],
+        method: 'Boleto',
+        value: 0,
+      },
+    ])
+  }
+
+  const handleRemoveInstallment = (index: number) => {
+    if (installments.length <= 1) {
+      toast.warning('Deve haver pelo menos 1 parcela.')
+      return
+    }
+    setInstallments((prev) =>
+      prev.filter((_, i) => i !== index).map((item, i) => ({ ...item, number: i + 1 })),
+    )
+  }
+
+  const handleInstallmentChange = (
+    index: number,
+    field: keyof QuoteInstallment,
+    val: string | number,
+  ) => {
+    setInstallments((prev) => {
+      const next = [...prev]
+      next[index] = {
+        ...next[index],
+        [field]: val,
+      }
+      return next
+    })
+  }
 
   // Adicionar novo item
   const handleAddItem = () => {
@@ -147,6 +285,8 @@ export default function QuoteForm() {
         quantity: 1,
         unit: 'un',
         unit_price: 0,
+        tax: 0,
+        technical_description: '',
       },
     ])
   }
@@ -187,7 +327,7 @@ export default function QuoteForm() {
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
       if (!item.description.trim()) {
-        toast.error(`Informe a descrição do item #${i + 1}.`)
+        toast.error(`Informe o título/descrição do item #${i + 1}.`)
         return false
       }
       if (item.quantity <= 0) {
@@ -213,56 +353,71 @@ export default function QuoteForm() {
       quantity: Number(it.quantity) || 1,
       unit: it.unit,
       unit_price: Number(it.unit_price) || 0,
+      tax: Number(it.tax) || 0,
+      technical_description: it.technical_description?.trim() || undefined,
     }))
 
-    const userName = user?.name || 'Administrador'
+    const cleanInstallments: QuoteInstallment[] = installments.map((inst, idx) => ({
+      number: idx + 1,
+      date: inst.date,
+      method: inst.method || 'Boleto',
+      value: Number(inst.value) || 0,
+    }))
+
+    const userName = user?.name || seller || 'Gustavo Tibério'
 
     try {
+      const quotePayload = {
+        client: selectedClientId,
+        items: cleanItems,
+        discount_percent: Number(discountPercent) || 0,
+        subtotal: Math.round(subtotal * 100) / 100,
+        total: Math.round(total * 100) / 100,
+        observations: observations.trim() || undefined,
+        seller: seller.trim() || 'Gustavo Tibério',
+        validity_days: Number(validityDays) || 5,
+        delivery_term: deliveryTerm.trim() || 'À Combinar',
+        payment_terms: paymentTerms.trim() || 'Entrada 50% + 2x',
+        icms: Number(icms) || 0,
+        ipi: Number(ipi) || 0,
+        pis: Number(pis) || 0,
+        cofins: Number(cofins) || 0,
+        installments: cleanInstallments,
+      }
+
       if (isEditing && id) {
-        // Atualiza orçamento mantendo status anterior a menos que seja enviado
         const updatedStatus =
           existingQuote?.status === 'Rascunho' && targetStatus === 'Enviado'
             ? 'Enviado'
             : existingQuote?.status || targetStatus
 
         const updated = await quoteService.update(id, {
-          client: selectedClientId,
-          items: cleanItems,
-          discount_percent: Number(discountPercent) || 0,
-          subtotal: Math.round(subtotal * 100) / 100,
-          total: Math.round(total * 100) / 100,
+          ...quotePayload,
           status: updatedStatus,
-          observations: observations.trim() || undefined,
         })
 
-        toast.success('Orçamento atualizado com sucesso!')
+        toast.success('Orçamento CORTEPLAN atualizado com sucesso!')
         navigate(`/orcamentos/${updated.id}`)
       } else {
-        // Criação de novo orçamento
         const created = await quoteService.create(
           {
-            client: selectedClientId,
+            ...quotePayload,
             quote_number: quoteNumber,
-            items: cleanItems,
-            discount_percent: Number(discountPercent) || 0,
-            subtotal: Math.round(subtotal * 100) / 100,
-            total: Math.round(total * 100) / 100,
             status: targetStatus,
-            observations: observations.trim() || undefined,
           },
           userName,
         )
 
         toast.success(
           targetStatus === 'Enviado'
-            ? 'Orçamento criado e enviado com sucesso!'
-            : 'Rascunho do orçamento salvo com sucesso!',
+            ? 'Proposta CORTEPLAN criada e enviada com sucesso!'
+            : 'Rascunho da proposta comercial salvo com sucesso!',
         )
 
         navigate(`/orcamentos/${created.id}`)
       }
     } catch (err: unknown) {
-      console.error('Erro ao salvar orçamento:', err)
+      console.error('Erro ao salvar proposta:', err)
       toast.error('Erro ao salvar a proposta comercial. Tente novamente.')
     } finally {
       setSaving(false)
@@ -274,7 +429,7 @@ export default function QuoteForm() {
       <div className="flex h-96 items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-slate-500">
           <Loader2 className="h-8 w-8 animate-spin text-[#1E3A5F]" />
-          <p className="text-sm">Carregando dados da proposta...</p>
+          <p className="text-sm">Carregando formulário de proposta...</p>
         </div>
       </div>
     )
@@ -298,10 +453,10 @@ export default function QuoteForm() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div>
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            {isEditing ? 'Edição de Proposta' : 'Nova Proposta Comercial'}
+            {isEditing ? 'Edição de Proposta' : 'Nova Proposta Comercial'} &bull; Modelo CORTEPLAN
           </span>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            {isEditing ? 'Editar Orçamento' : 'Elaboração de Orçamento'}
+            {isEditing ? `Editar Proposta Nº ${quoteNumber}` : 'Elaboração de Proposta Comercial'}
           </h1>
         </div>
 
@@ -309,7 +464,7 @@ export default function QuoteForm() {
         <div className="flex items-center gap-3">
           <div className="text-right">
             <span className="text-[11px] font-semibold text-slate-400 block uppercase">
-              Número Sequencial
+              Número da Proposta
             </span>
             <span className="font-mono text-2xl font-extrabold text-[#1E3A5F]">
               {formattedNumber}
@@ -432,33 +587,38 @@ export default function QuoteForm() {
               </div>
             ) : (
               <p className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200/80">
-                Atenção: Selecione um cliente cadastrado acima ou utilize o botão &quot;Novo
-                cliente&quot; para cadastrar rapidamente.
+                Selecione um cliente para a proposta ou cadastre um novo pelo botão acima.
               </p>
             )}
           </div>
 
-          {/* Seção 2: Itens do Orçamento */}
+          {/* Seção 2: Itens do Orçamento (com Impostos do item e Descrição Técnica detalhada) */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                2. Itens do Orçamento <span className="text-red-500">*</span>
-              </h2>
-              <span className="text-xs text-slate-400">{items.length} item(ns) adicionado(s)</span>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                  2. Itens e Especificações Técnicas <span className="text-red-500">*</span>
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Inclua título curto, imposto do item e a descrição técnica completa como no modelo
+                  CORTEPLAN.
+                </p>
+              </div>
+              <span className="text-xs text-slate-400">{items.length} item(ns)</span>
             </div>
 
             {/* Lista de itens dinâmicos */}
-            <div className="space-y-3">
+            <div className="space-y-4">
               {items.map((item, index) => {
                 const itemSubtotal = (Number(item.quantity) || 0) * (Number(item.unit_price) || 0)
 
                 return (
                   <div
                     key={index}
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3"
+                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-xs font-bold text-slate-500">Item #{index + 1}</span>
+                      <span className="text-xs font-bold text-slate-700">Item #{index + 1}</span>
                       {items.length > 1 && (
                         <Button
                           type="button"
@@ -473,21 +633,21 @@ export default function QuoteForm() {
                       )}
                     </div>
 
-                    {/* Descrição */}
+                    {/* Título do produto */}
                     <div className="space-y-1">
-                      <Label className="text-[11px] font-semibold text-slate-600">
-                        Descrição do produto ou serviço
+                      <Label className="text-[11px] font-semibold text-slate-700">
+                        Título do Item (ex: Carrinho Gourmet com Testeira.)
                       </Label>
                       <Input
-                        placeholder="Ex: Armário sob medida em MDF 18mm com dobradiças amortecedoras"
+                        placeholder="Ex: Carrinho Gourmet com Testeira."
                         value={item.description}
                         onChange={(e) => handleItemChange(index, 'description', e.target.value)}
-                        className="bg-white text-xs sm:text-sm h-10"
+                        className="bg-white text-xs sm:text-sm h-10 font-medium"
                       />
                     </div>
 
-                    {/* Quantidade, Unidade, Preço Unitário e Subtotal */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {/* Quantidade, Unidade, Preço Unitário, Imposto do Item e Subtotal */}
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                       <div className="space-y-1">
                         <Label className="text-[11px] font-semibold text-slate-600">
                           Quantidade
@@ -516,9 +676,9 @@ export default function QuoteForm() {
                             <SelectValue placeholder="Un" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="un">un (unidade)</SelectItem>
-                            <SelectItem value="m²">m² (metro quadrado)</SelectItem>
-                            <SelectItem value="m">m (metro linear)</SelectItem>
+                            <SelectItem value="un">un</SelectItem>
+                            <SelectItem value="m²">m²</SelectItem>
+                            <SelectItem value="m">m</SelectItem>
                             <SelectItem value="kit">kit</SelectItem>
                             <SelectItem value="hora">hora</SelectItem>
                           </SelectContent>
@@ -527,31 +687,61 @@ export default function QuoteForm() {
 
                       <div className="space-y-1">
                         <Label className="text-[11px] font-semibold text-slate-600">
-                          Valor Unitário (R$)
+                          Valor Unit. (R$)
                         </Label>
-                        <div className="relative">
-                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-semibold">
-                            R$
-                          </span>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.unit_price}
-                            onChange={(e) =>
-                              handleItemChange(index, 'unit_price', parseFloat(e.target.value) || 0)
-                            }
-                            className="bg-white pl-8 text-xs sm:text-sm h-10 font-mono"
-                          />
-                        </div>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.unit_price}
+                          onChange={(e) =>
+                            handleItemChange(index, 'unit_price', parseFloat(e.target.value) || 0)
+                          }
+                          className="bg-white text-xs sm:text-sm h-10 font-mono"
+                        />
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-semibold text-slate-600">Subtotal</Label>
-                        <div className="h-10 rounded-md bg-slate-100 flex items-center px-3 font-mono text-xs sm:text-sm font-bold text-slate-900">
+                        <Label className="text-[11px] font-semibold text-slate-600">
+                          Imp: (R$)
+                        </Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="Ex: 1719.90"
+                          value={item.tax || ''}
+                          onChange={(e) =>
+                            handleItemChange(index, 'tax', parseFloat(e.target.value) || 0)
+                          }
+                          className="bg-white text-xs sm:text-sm h-10 font-mono"
+                        />
+                      </div>
+
+                      <div className="space-y-1 col-span-2 sm:col-span-1">
+                        <Label className="text-[11px] font-semibold text-slate-600">
+                          Valor Total
+                        </Label>
+                        <div className="h-10 rounded-md bg-slate-100 flex items-center px-3 font-mono text-xs font-bold text-slate-900">
                           {formatCurrencyBRL(itemSubtotal)}
                         </div>
                       </div>
+                    </div>
+
+                    {/* Descrição técnica longa */}
+                    <div className="space-y-1 pt-1">
+                      <Label className="text-[11px] font-semibold text-slate-600">
+                        Descrição Técnica Detalhada (materiais, acabamento, dimensões, componentes)
+                      </Label>
+                      <Textarea
+                        rows={3}
+                        placeholder='Ex: Confeccionado em compensado com revestimento laminado (Fórmica). Tampo em MDF madeirado. Testeira com iluminação LED. Mini estoque com porta e fechadura. Rodas de alumínio aro 20 com paralamas e rodízios de apoio de 3". Medidas aproximadas: 120x60x185cm.'
+                        value={item.technical_description || ''}
+                        onChange={(e) =>
+                          handleItemChange(index, 'technical_description', e.target.value)
+                        }
+                        className="bg-white text-xs"
+                      />
                     </div>
                   </div>
                 )
@@ -569,18 +759,262 @@ export default function QuoteForm() {
             </button>
           </div>
 
-          {/* Seção 4: Observações e Condições Comerciais */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+          {/* Seção 3: Detalhamento de Impostos (ICMS, IPI, PIS, COFINS) */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                3. Impostos Totais da Proposta (R$)
+              </h2>
+              <p className="text-xs text-slate-500">
+                Preencha os impostos que serão discriminados no bloco de totais da proposta
+                impressa.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-700">ICMS (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={icms || ''}
+                  onChange={(e) => setIcms(parseFloat(e.target.value) || 0)}
+                  className="bg-white text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-700">IPI (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={ipi || ''}
+                  onChange={(e) => setIpi(parseFloat(e.target.value) || 0)}
+                  className="bg-white text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-700">PIS (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={pis || ''}
+                  onChange={(e) => setPis(parseFloat(e.target.value) || 0)}
+                  className="bg-white text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-700">COFINS (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={cofins || ''}
+                  onChange={(e) => setCofins(parseFloat(e.target.value) || 0)}
+                  className="bg-white text-xs font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Seção 4: Condições Comerciais e Prazos */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-              3. Condições Comerciais & Observações
+              4. Condições Comerciais & Vendedor
             </h2>
-            <Textarea
-              rows={4}
-              placeholder="Ex: Prazo de entrega: 20 dias úteis. Condições de pagamento: 40% na aprovação e saldo em 30/60 dias. Montagem e frete inclusos."
-              value={observations}
-              onChange={(e) => setObservations(e.target.value)}
-              className="text-xs sm:text-sm"
-            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Vendedor Responsável</Label>
+                <Input
+                  placeholder="Ex: Gustavo Tibério"
+                  value={seller}
+                  onChange={(e) => setSeller(e.target.value)}
+                  className="text-xs sm:text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">
+                  Validade da Proposta (dias)
+                </Label>
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="5"
+                  value={validityDays}
+                  onChange={(e) => setValidityDays(parseInt(e.target.value, 10) || 5)}
+                  className="text-xs sm:text-sm font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Prazo de Entrega</Label>
+                <Input
+                  placeholder="Ex: À Combinar ou 20 dias úteis"
+                  value={deliveryTerm}
+                  onChange={(e) => setDeliveryTerm(e.target.value)}
+                  className="text-xs sm:text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">
+                  Condição de Pagamento (resumo)
+                </Label>
+                <Input
+                  placeholder="Ex: Entrada 50% + 2x"
+                  value={paymentTerms}
+                  onChange={(e) => setPaymentTerms(e.target.value)}
+                  className="text-xs sm:text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Observações livres */}
+            <div className="space-y-1.5 pt-2">
+              <Label className="text-xs font-semibold text-slate-700">
+                Observações Gerais da Proposta (texto livre exibido no corpo)
+              </Label>
+              <Textarea
+                rows={4}
+                placeholder="Ex: Prazo de entrega: 20 dias úteis&#10;Pagamento: 50% sinal, saldo em 30/60 dias após emissão da NF-e...&#10;Este orçamento contempla exclusivamente os itens descritos..."
+                value={observations}
+                onChange={(e) => setObservations(e.target.value)}
+                className="text-xs sm:text-sm"
+              />
+            </div>
+          </div>
+
+          {/* Seção 5: Tabela de Parcelas (Página 2 do modelo CORTEPLAN) */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                  5. Programação de Parcelas (Página 2)
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Defina as datas, formas de pagamento e valores de cada parcela.
+                </p>
+              </div>
+
+              {/* Botões rápidos de geração */}
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAutoGenerateInstallments(2)}
+                  className="text-xs h-7 rounded-lg"
+                >
+                  2x
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAutoGenerateInstallments(3)}
+                  className="text-xs h-7 rounded-lg"
+                >
+                  3x (Entrada + 2x)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAutoGenerateInstallments(4)}
+                  className="text-xs h-7 rounded-lg"
+                >
+                  4x
+                </Button>
+              </div>
+            </div>
+
+            {/* Lista de Parcelas */}
+            <div className="space-y-2">
+              {installments.map((inst, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/70"
+                >
+                  <span className="w-12 text-center font-bold text-xs text-slate-700 shrink-0">
+                    #{inst.number}
+                  </span>
+
+                  <div className="flex-1 min-w-[130px]">
+                    <Input
+                      type="date"
+                      value={inst.date}
+                      onChange={(e) => handleInstallmentChange(idx, 'date', e.target.value)}
+                      className="h-9 bg-white text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="flex-1 min-w-[120px]">
+                    <Select
+                      value={inst.method}
+                      onValueChange={(val) => handleInstallmentChange(idx, 'method', val)}
+                    >
+                      <SelectTrigger className="h-9 bg-white text-xs">
+                        <SelectValue placeholder="Forma" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Boleto">Boleto</SelectItem>
+                        <SelectItem value="PIX">PIX</SelectItem>
+                        <SelectItem value="Transferência">Transferência</SelectItem>
+                        <SelectItem value="Cartão">Cartão</SelectItem>
+                        <SelectItem value="Cheque">Cheque</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex-1 min-w-[110px]">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="Valor"
+                      value={inst.value}
+                      onChange={(e) =>
+                        handleInstallmentChange(idx, 'value', parseFloat(e.target.value) || 0)
+                      }
+                      className="h-9 bg-white text-xs font-mono text-right"
+                    />
+                  </div>
+
+                  {installments.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemoveInstallment(idx)}
+                      className="h-8 w-8 text-slate-400 hover:text-red-600 shrink-0"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAddInstallment}
+              className="text-xs rounded-xl"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1 text-amber-500" />
+              Adicionar Parcela
+            </Button>
           </div>
         </div>
 
@@ -588,12 +1022,12 @@ export default function QuoteForm() {
         <div className="lg:col-span-4 sticky top-24 space-y-5">
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100">
-              Resumo Financeiro
+              Resumo da Proposta CORTEPLAN
             </h2>
 
             <div className="space-y-3 text-xs sm:text-sm">
               <div className="flex justify-between items-center text-slate-600">
-                <span>Subtotal dos itens</span>
+                <span>Produtos (subtotal)</span>
                 <span className="font-mono font-semibold text-slate-900">
                   {formatCurrencyBRL(subtotal)}
                 </span>
@@ -621,6 +1055,39 @@ export default function QuoteForm() {
                   placeholder="0"
                 />
               </div>
+
+              {/* Discriminativo de Impostos */}
+              {taxesTotal > 0 && (
+                <div className="pt-2 border-t border-slate-100 space-y-1 text-xs text-slate-600">
+                  <div className="font-bold text-slate-700 text-[11px] uppercase">
+                    Impostos discriminados
+                  </div>
+                  {icms > 0 && (
+                    <div className="flex justify-between">
+                      <span>ICMS</span>
+                      <span className="font-mono">{formatCurrencyBRL(icms)}</span>
+                    </div>
+                  )}
+                  {ipi > 0 && (
+                    <div className="flex justify-between">
+                      <span>IPI</span>
+                      <span className="font-mono">{formatCurrencyBRL(ipi)}</span>
+                    </div>
+                  )}
+                  {pis > 0 && (
+                    <div className="flex justify-between">
+                      <span>PIS</span>
+                      <span className="font-mono">{formatCurrencyBRL(pis)}</span>
+                    </div>
+                  )}
+                  {cofins > 0 && (
+                    <div className="flex justify-between">
+                      <span>COFINS</span>
+                      <span className="font-mono">{formatCurrencyBRL(cofins)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Total Geral em Destaque */}
               <div className="pt-4 border-t-2 border-slate-200 space-y-1">
@@ -650,7 +1117,7 @@ export default function QuoteForm() {
                 ) : (
                   <>
                     <Send className="mr-2 h-4 w-4 text-amber-400" />
-                    Salvar e Enviar
+                    Salvar e Enviar Proposta
                   </>
                 )}
               </Button>
