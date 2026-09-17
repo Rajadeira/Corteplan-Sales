@@ -135,7 +135,7 @@ export default function Login() {
         </div>
 
         {/* Textos Centrais e Destaques (lado esquerdo) */}
-        <div className="relative z-20 max-w-md my-auto pt-24 pb-8">
+        <div className="relative z-20 max-w-md my-auto pt-[0px] pb-[9px] mt-[32px]">
           <h1 className="text-3xl sm:text-4xl xl:text-[42px] font-black tracking-tight leading-[1.15] text-white">
             Sistema de Gestão <br />
             <span className="text-[#F08A24]">de Orçamentos</span>
