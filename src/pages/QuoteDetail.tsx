@@ -10,7 +10,6 @@ import {
   Loader2,
   Clock,
   Sparkles,
-  QrCode,
 } from 'lucide-react'
 import { quoteService } from '@/services/quotes'
 import { useAuth } from '@/contexts/AuthContext'
@@ -438,7 +437,7 @@ export default function QuoteDetail() {
               PÁGINA 1 — CABEÇALHO, ITENS, OBSERVAÇÕES E TOTAIS
               (Com diagramação ajustável e ordenação personalizada)
               ========================================================= */}
-          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-[13px] leading-normal space-y-4">
+          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-[13px] leading-normal space-y-4 bg-white">
             {layoutConfig.page1Order.map((blockId) => {
               if (blockId === 'header') {
                 return (
@@ -453,14 +452,8 @@ export default function QuoteDetail() {
                     onMoveOrder={handleMoveBlockOrder}
                   >
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-6 border-b border-slate-200">
-                      <div className="flex items-center gap-4">
-                        <CorteplanLogo width={190} height={46} />
-                        <div
-                          className="hidden sm:flex flex-col items-center justify-center p-1 border border-slate-300 rounded bg-white"
-                          title="Código de autenticidade da proposta"
-                        >
-                          <QrCode className="h-10 w-10 text-slate-800" />
-                        </div>
+                      <div className="flex items-center">
+                        <CorteplanLogo width={200} height={48} />
                       </div>
 
                       <div className="text-right text-[11px] sm:text-xs text-slate-600 leading-tight space-y-0.5">
@@ -599,52 +592,67 @@ export default function QuoteDetail() {
                             <th className="py-2 px-3 text-right w-28">Valor Total</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200">
-                          {quote.items?.map((item, index) => {
-                            const itemTotal = (item.quantity || 0) * (item.unit_price || 0)
-                            return (
-                              <React.Fragment key={index}>
-                                <tr className="align-top">
-                                  <td className="py-3 px-2 text-center font-bold text-slate-800">
-                                    {index + 1}
-                                  </td>
-                                  <td className="py-3 px-3">
-                                    <div className="font-bold text-slate-900 text-[13px]">
-                                      {item.description}
+                        {quote.items?.map((item, index) => {
+                          const itemTotal = (item.quantity || 0) * (item.unit_price || 0)
+                          return (
+                            <tbody
+                              key={index}
+                              className="divide-y divide-slate-200 border-b border-slate-200 print-avoid-break"
+                            >
+                              <tr className="align-top print-avoid-break">
+                                <td className="py-3 px-2 text-center font-bold text-slate-800">
+                                  {index + 1}
+                                </td>
+                                <td className="py-3 px-3">
+                                  <div className="flex items-start gap-3">
+                                    {item.image && (
+                                      <div className="shrink-0 rounded overflow-hidden border border-slate-200 bg-white print:border-slate-300">
+                                        <img
+                                          src={item.image}
+                                          alt={item.description}
+                                          className="h-[76px] w-auto max-w-[110px] object-contain block"
+                                          style={{ height: '76px', maxHeight: '76px' }}
+                                        />
+                                      </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-bold text-slate-900 text-[13px]">
+                                        {item.description}
+                                      </div>
                                     </div>
-                                  </td>
-                                  <td className="py-3 px-3 text-center whitespace-nowrap text-slate-700">
-                                    {item.quantity} {item.unit || 'un'}
-                                  </td>
-                                  <td className="py-3 px-3 text-right whitespace-nowrap font-mono text-slate-800">
-                                    {formatCurrencyBRL(item.unit_price)}
-                                  </td>
-                                  <td className="py-3 px-3 text-right whitespace-nowrap font-mono font-bold text-slate-900">
-                                    {formatCurrencyBRL(itemTotal)}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 text-center whitespace-nowrap text-slate-700">
+                                  {item.quantity} {item.unit || 'un'}
+                                </td>
+                                <td className="py-3 px-3 text-right whitespace-nowrap font-mono text-slate-800">
+                                  {formatCurrencyBRL(item.unit_price)}
+                                </td>
+                                <td className="py-3 px-3 text-right whitespace-nowrap font-mono font-bold text-slate-900">
+                                  {formatCurrencyBRL(itemTotal)}
+                                </td>
+                              </tr>
+
+                              {(item.tax || item.technical_description) && (
+                                <tr className="bg-slate-50/40 print:bg-white print-avoid-break">
+                                  <td></td>
+                                  <td colSpan={4} className="pb-3 px-3 pt-0">
+                                    {item.tax && item.tax > 0 ? (
+                                      <div className="text-right text-[11px] text-slate-500 font-mono italic mb-1">
+                                        Imp: {formatCurrencyBRL(item.tax)}
+                                      </div>
+                                    ) : null}
+                                    {item.technical_description && (
+                                      <p className="text-[11px] text-slate-600 leading-relaxed whitespace-pre-line text-justify">
+                                        {item.technical_description}
+                                      </p>
+                                    )}
                                   </td>
                                 </tr>
-
-                                {(item.tax || item.technical_description) && (
-                                  <tr className="bg-slate-50/40">
-                                    <td></td>
-                                    <td colSpan={4} className="pb-3 px-3 pt-0">
-                                      {item.tax && item.tax > 0 ? (
-                                        <div className="text-right text-[11px] text-slate-500 font-mono italic mb-1">
-                                          Imp: {formatCurrencyBRL(item.tax)}
-                                        </div>
-                                      ) : null}
-                                      {item.technical_description && (
-                                        <p className="text-[11px] text-slate-600 leading-relaxed whitespace-pre-line text-justify">
-                                          {item.technical_description}
-                                        </p>
-                                      )}
-                                    </td>
-                                  </tr>
-                                )}
-                              </React.Fragment>
-                            )
-                          })}
-                        </tbody>
+                              )}
+                            </tbody>
+                          )
+                        })}
                       </table>
                     </div>
                   </LayoutBlockWrapper>
@@ -767,7 +775,7 @@ export default function QuoteDetail() {
               ========================================================= */}
           <div className="print-page-break border-t-2 border-dashed border-slate-300 print:border-none" />
 
-          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-xs leading-normal space-y-4">
+          <section className="p-8 sm:p-12 print:p-0 font-sans text-slate-900 text-xs leading-normal space-y-4 bg-white print:pt-4">
             {layoutConfig.page2Order.map((blockId) => {
               if (blockId === 'conditions_summary') {
                 return (
@@ -840,7 +848,7 @@ export default function QuoteDetail() {
                         </thead>
                         <tbody className="divide-y divide-slate-200">
                           {installments.map((inst, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50/50">
+                            <tr key={idx} className="hover:bg-slate-50/50 print-avoid-break">
                               <td className="py-2 px-3 font-semibold text-slate-800">
                                 {inst.number}
                               </td>

@@ -158,7 +158,7 @@ export default function Layout() {
 
       {/* Desktop / Mobile Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-[#0F172A] text-[#E2E8F0] shadow-xl transition-all duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-[#0F172A] text-[#E2E8F0] shadow-xl transition-all duration-300 ease-in-out print:hidden ${
           collapsed ? 'w-20' : 'w-[280px]'
         } ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
       >
@@ -281,12 +281,12 @@ export default function Layout() {
 
       {/* Main Content Area */}
       <div
-        className={`flex-1 flex flex-col transition-all duration-300 min-w-0 ${
+        className={`flex-1 flex flex-col transition-all duration-300 min-w-0 print:m-0 print:p-0 print:w-full ${
           collapsed ? 'md:ml-20' : 'md:ml-[280px]'
         }`}
       >
         {/* Header Superior */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/90 px-4 md:px-8 backdrop-blur-md shadow-xs">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/90 px-4 md:px-8 backdrop-blur-md shadow-xs print:hidden">
           <div className="flex items-center gap-3">
             {/* Mobile hamburger */}
             <button
@@ -473,7 +473,7 @@ export default function Layout() {
         </header>
 
         {/* Page Content Viewport */}
-        <main className="flex-1 p-4 md:p-8 animate-in fade-in-50 duration-200 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-4 md:p-8 animate-in fade-in-50 duration-200 max-w-7xl w-full mx-auto print:p-0 print:m-0 print:max-w-none print:w-full print:block">
           <Outlet />
         </main>
 

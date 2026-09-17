@@ -15,7 +15,11 @@ import {
   CheckCircle,
   Calendar,
   Percent,
+  Image as ImageIcon,
+  Upload,
+  X,
 } from 'lucide-react'
+import { compressProductImage } from '@/lib/imageUtils'
 import { quoteService } from '@/services/quotes'
 import { clientService } from '@/services/clients'
 import { useAuth } from '@/contexts/AuthContext'
@@ -388,6 +392,7 @@ export default function QuoteForm() {
       unit_price: Number(it.unit_price) || 0,
       tax: Number(it.tax) || 0,
       technical_description: it.technical_description?.trim() || undefined,
+      image: it.image || undefined,
     }))
 
     const cleanInstallments: QuoteInstallment[] = installments.map((inst, idx) => ({
@@ -777,6 +782,93 @@ export default function QuoteForm() {
                         }
                         className="bg-white text-xs"
                       />
+                    </div>
+
+                    {/* Foto / Imagem do Produto */}
+                    <div className="pt-2 border-t border-slate-200/80">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <Label className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
+                          <ImageIcon className="h-3.5 w-3.5 text-[#F08A24]" />
+                          Foto do Produto (opcional — impressa na proposta)
+                        </Label>
+                        {item.image && (
+                          <button
+                            type="button"
+                            onClick={() => handleItemChange(index, 'image', '')}
+                            className="text-[10px] text-red-600 hover:text-red-700 hover:underline flex items-center gap-1"
+                          >
+                            <X className="h-3 w-3" />
+                            Remover foto
+                          </button>
+                        )}
+                      </div>
+
+                      {item.image ? (
+                        <div className="flex items-center gap-3 p-2 bg-white rounded-lg border border-slate-200">
+                          <img
+                            src={item.image}
+                            alt="Pré-visualização do produto"
+                            className="h-16 w-16 object-contain rounded border border-slate-100 bg-slate-50"
+                          />
+                          <div className="flex-1 text-xs">
+                            <span className="font-semibold text-slate-800 block">
+                              Imagem anexada ao item
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              Será exibida em miniatura (~2 cm) ao lado da descrição na proposta
+                              impressa.
+                            </span>
+                          </div>
+                          <label className="cursor-pointer">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0]
+                                if (!file) return
+                                try {
+                                  const compressed = await compressProductImage(file, 480, 0.82)
+                                  handleItemChange(index, 'image', compressed)
+                                  toast.success('Foto atualizada!')
+                                } catch (err: unknown) {
+                                  toast.error(
+                                    err instanceof Error
+                                      ? err.message
+                                      : 'Erro ao processar imagem.',
+                                  )
+                                }
+                              }}
+                            />
+                            <span className="inline-flex items-center px-2.5 py-1 text-[11px] font-medium border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700">
+                              Trocar foto
+                            </span>
+                          </label>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer flex items-center justify-center gap-2 p-3 border border-dashed border-slate-300 hover:border-[#F08A24] hover:bg-amber-50/20 rounded-xl transition-colors text-xs text-slate-600 bg-white">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0]
+                              if (!file) return
+                              try {
+                                const compressed = await compressProductImage(file, 480, 0.82)
+                                handleItemChange(index, 'image', compressed)
+                                toast.success('Foto do produto adicionada!')
+                              } catch (err: unknown) {
+                                toast.error(
+                                  err instanceof Error ? err.message : 'Erro ao processar imagem.',
+                                )
+                              }
+                            }}
+                          />
+                          <Upload className="h-4 w-4 text-[#F08A24]" />
+                          <span>Clique para anexar foto do produto (PNG, JPG, WebP)</span>
+                        </label>
+                      )}
                     </div>
                   </div>
                 )

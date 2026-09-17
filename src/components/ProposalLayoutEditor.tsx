@@ -184,7 +184,11 @@ export function LayoutBlockWrapper({
   }
 
   if (!isEditMode) {
-    return <div style={computedStyle}>{children}</div>
+    return (
+      <div style={computedStyle} className="print-avoid-break">
+        {children}
+      </div>
+    )
   }
 
   const label = BLOCK_LABELS[id]?.name || id

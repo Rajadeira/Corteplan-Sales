@@ -128,22 +128,118 @@
 
 @media print {
   @page {
-    margin: 1.2cm 1.5cm;
     size: A4 portrait;
+    margin: 10mm 12mm 12mm 12mm;
   }
+
+  html,
   body {
     background: #ffffff !important;
-    color: #000000 !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 100% !important;
+  }
+
+  /* Anula fundos de interface do aplicativo para que a folha seja 100% branca pura */
+  #root,
+  .bg-slate-50,
+  .bg-slate-100,
+  .bg-slate-200,
+  .bg-slate-900,
+  .bg-muted {
+    background-color: transparent !important;
+  }
+
+  /* Esconde navegações, menus, barras de cabeçalho do app, botões e elementos interativos */
+  aside,
+  header,
+  footer,
+  nav,
+  button,
+  .no-print,
+  [data-no-print='true'],
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Remove sombras e relevos em qualquer elemento impresso */
+  *,
+  *::before,
+  *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+
+  /* Quebra de página controlada entre páginas da proposta */
   .print-page-break {
-    page-break-before: always;
-    break-before: page;
+    page-break-before: always !important;
+    break-before: page !important;
+    display: block !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
   }
-  .print-avoid-break {
-    page-break-inside: avoid;
-    break-inside: avoid;
+
+  /* Evita quebras indesejadas no meio de blocos, linhas de tabela, assinaturas e totais */
+  .print-avoid-break,
+  tr,
+  tbody,
+  .grid,
+  .space-y-4 > div {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Container da folha de proposta */
+  #proposal-sheet {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+  }
+
+  #proposal-sheet section {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Tabelas com quebra controlada sem cortar linhas ao meio */
+  table {
+    page-break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  img {
+    max-width: 100% !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }
 

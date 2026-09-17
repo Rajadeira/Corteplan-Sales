@@ -22,6 +22,7 @@ export interface QuoteItem {
   unit_price: number
   tax?: number // Imposto do item (ex: Imp: R$ 1.719,90)
   technical_description?: string // Descrição técnica longa em texto corrido
+  image?: string // Foto do produto codificada em base64 (data:image/...)
 }
 
 export interface QuoteInstallment {
