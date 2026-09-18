@@ -24,6 +24,7 @@ import {
   cleanDocument,
   consultCNPJ,
 } from '@/lib/cnpjCpfUtils'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
 
 interface ClientModalProps {
@@ -316,7 +317,8 @@ export default function ClientModal({
       onOpenChange(false)
     } catch (err: unknown) {
       console.error('Erro ao salvar cliente:', err)
-      toast.error('Erro ao salvar cliente. Verifique os dados e tente novamente.')
+      const message = getErrorMessage(err)
+      toast.error(message || 'Erro ao salvar cliente. Verifique os dados e tente novamente.')
     } finally {
       setLoading(false)
     }

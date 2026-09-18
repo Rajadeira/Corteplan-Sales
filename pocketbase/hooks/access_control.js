@@ -158,21 +158,19 @@ onRecordCreateRequest((e) => {
   e.next()
 }, 'orders')
 
-// 3. Regras de Clientes (Clients): apenas Administrador pode criar, editar ou excluir
+// 3. Regras de Clientes (Clients): qualquer usuário autenticado pode criar e editar; apenas Administrador pode excluir
 onRecordCreateRequest((e) => {
   const auth = e.auth
-  const role = auth ? auth.get('role') : ''
-  if (!auth || role !== 'Administrador') {
-    throw new ForbiddenError('Apenas administradores podem cadastrar novos clientes.')
+  if (!auth) {
+    throw new ForbiddenError('Acesso não autorizado. Faça login para cadastrar clientes.')
   }
   e.next()
 }, 'clients')
 
 onRecordUpdateRequest((e) => {
   const auth = e.auth
-  const role = auth ? auth.get('role') : ''
-  if (!auth || role !== 'Administrador') {
-    throw new ForbiddenError('Apenas administradores podem editar clientes.')
+  if (!auth) {
+    throw new ForbiddenError('Acesso não autorizado. Faça login para editar clientes.')
   }
   e.next()
 }, 'clients')

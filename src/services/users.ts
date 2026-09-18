@@ -13,6 +13,13 @@ export interface UpdateUserData {
   email?: string
   role?: UserRole
   password?: string
+  oldPassword?: string
+}
+
+export interface ChangePasswordData {
+  oldPassword?: string
+  password: string
+  passwordConfirm?: string
 }
 
 export const userService = {
@@ -39,18 +46,55 @@ export const userService = {
   },
 
   async update(id: string, data: UpdateUserData): Promise<AppUserRecord> {
-    const payload: Record<string, unknown> = {
-      name: data.name,
-      role: data.role,
-    }
-    if (data.email) {
-      payload.email = data.email
-    }
+    const payload: Record<string, unknown> = {}
+    if (data.name !== undefined) payload.name = data.name
+    if (data.role !== undefined) payload.role = data.role
+    if (data.email !== undefined) payload.email = data.email
     if (data.password) {
       payload.password = data.password
       payload.passwordConfirm = data.password
+      if (data.oldPassword) {
+        payload.oldPassword = data.oldPassword
+      }
     }
-    return pb.collection('users').update<AppUserRecord>(id, payload)
+
+    try {
+      const updated = await pb.collection('users').update<AppUserRecord>(id, payload)
+      return updated
+    } catch (err) {
+      // Se a atualização direta do registro falhar por conta de senha, tenta o endpoint customizado
+      if (data.password) {
+        await userService.changePassword(id, {
+          password: data.password,
+          passwordConfirm: data.password,
+          oldPassword: data.oldPassword,
+        })
+        // Atualiza os outros campos (sem senha)
+        const restPayload: Record<string, unknown> = {}
+        if (data.name !== undefined) restPayload.name = data.name
+        if (data.role !== undefined) restPayload.role = data.role
+        if (data.email !== undefined) restPayload.email = data.email
+        if (Object.keys(restPayload).length > 0) {
+          return pb.collection('users').update<AppUserRecord>(id, restPayload)
+        }
+        return pb.collection('users').getOne<AppUserRecord>(id)
+      }
+      throw err
+    }
+  },
+
+  async changePassword(
+    id: string,
+    data: ChangePasswordData,
+  ): Promise<{ success: boolean; message: string }> {
+    return pb.send<{ success: boolean; message: string }>(`/backend/v1/users/${id}/password`, {
+      method: 'POST',
+      body: {
+        password: data.password,
+        passwordConfirm: data.passwordConfirm || data.password,
+        oldPassword: data.oldPassword || '',
+      },
+    })
   },
 
   async delete(id: string): Promise<boolean> {

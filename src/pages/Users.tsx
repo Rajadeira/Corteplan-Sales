@@ -54,7 +54,16 @@ export default function Users() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [oldPassword, setOldPassword] = useState('')
   const [role, setRole] = useState<UserRole>('Vendedor')
+
+  // Modal separado dedicado a Troca de Senha
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false)
+  const [targetPasswordUser, setTargetPasswordUser] = useState<AppUserRecord | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
 
   // Modal de exclusão
   const [userToDelete, setUserToDelete] = useState<AppUserRecord | null>(null)
@@ -81,6 +90,7 @@ export default function Users() {
     setName('')
     setEmail('')
     setPassword('')
+    setOldPassword('')
     setRole('Vendedor')
     setIsModalOpen(true)
   }
@@ -90,8 +100,17 @@ export default function Users() {
     setName(user.name)
     setEmail(user.email)
     setPassword('')
+    setOldPassword('')
     setRole(user.role || 'Vendedor')
     setIsModalOpen(true)
+  }
+
+  const handleOpenPasswordModal = (user: AppUserRecord) => {
+    setTargetPasswordUser(user)
+    setNewPassword('')
+    setConfirmNewPassword('')
+    setCurrentPassword('')
+    setPasswordModalOpen(true)
   }
 
   const handleSave = async (e: React.FormEvent) => {
@@ -105,6 +124,11 @@ export default function Users() {
       return
     }
 
+    if (password && password.length < 8) {
+      toast.error('A senha deve ter no mínimo 8 caracteres.')
+      return
+    }
+
     setSaving(true)
     try {
       if (editingUser) {
@@ -112,7 +136,7 @@ export default function Users() {
           name: name.trim(),
           email: email.trim(),
           role,
-          ...(password ? { password } : {}),
+          ...(password ? { password, oldPassword: oldPassword || undefined } : {}),
         })
         toast.success(`Usuário ${name} atualizado com sucesso!`)
       } else {
@@ -128,9 +152,63 @@ export default function Users() {
       loadUsers()
     } catch (err: any) {
       console.error('Erro ao salvar usuário:', err)
-      toast.error(err?.message || 'Erro ao salvar dados do usuário.')
+      const errorMsg =
+        err?.response?.data?.password?.message ||
+        err?.response?.data?.oldPassword?.message ||
+        err?.response?.message ||
+        err?.message ||
+        'Erro ao salvar dados do usuário.'
+      toast.error(errorMsg)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!targetPasswordUser) return
+
+    if (!newPassword) {
+      toast.error('Informe a nova senha.')
+      return
+    }
+    if (newPassword.length < 8) {
+      toast.error('A nova senha deve ter no mínimo 8 caracteres.')
+      return
+    }
+    if (newPassword !== confirmNewPassword) {
+      toast.error('A confirmação da nova senha não confere.')
+      return
+    }
+
+    const isCurrentAdmin = currentUser?.role === 'Administrador'
+    const isSelf = targetPasswordUser.id === currentUser?.id
+
+    // Vendedor trocando a própria senha precisa informar a senha atual
+    if (isSelf && !isCurrentAdmin && !currentPassword) {
+      toast.error('Informe sua senha atual para continuar.')
+      return
+    }
+
+    setChangingPassword(true)
+    try {
+      const res = await userService.changePassword(targetPasswordUser.id, {
+        password: newPassword,
+        passwordConfirm: confirmNewPassword,
+        oldPassword: currentPassword || undefined,
+      })
+      toast.success(res.message || 'Senha alterada com sucesso!')
+      setPasswordModalOpen(false)
+    } catch (err: any) {
+      console.error('Erro ao alterar senha:', err)
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.response?.message ||
+        err?.message ||
+        'Erro ao alterar senha. Verifique os dados.'
+      toast.error(errorMsg)
+    } finally {
+      setChangingPassword(false)
     }
   }
 
@@ -346,6 +424,17 @@ export default function Users() {
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => handleOpenPasswordModal(u)}
+                    className="h-8 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-50 rounded-lg"
+                    title="Alterar Senha de Acesso"
+                  >
+                    <KeyRound className="h-3.5 w-3.5 mr-1" />
+                    Senha
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleOpenEdit(u)}
                     className="h-8 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg"
                   >
@@ -425,7 +514,7 @@ export default function Users() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold text-slate-700">
-                  {editingUser ? 'Nova Senha (opcional)' : 'Senha de Acesso'}
+                  {editingUser ? 'Nova Senha (opcional, mín. 8 caracteres)' : 'Senha de Acesso'}
                 </Label>
                 {!editingUser && (
                   <span className="text-[10px] text-slate-400">Padrão: Skip@Pass</span>
@@ -433,12 +522,34 @@ export default function Users() {
               </div>
               <Input
                 type="password"
-                placeholder={editingUser ? 'Deixe em branco para manter a atual' : 'Skip@Pass'}
+                placeholder={
+                  editingUser
+                    ? 'Deixe em branco para manter a atual'
+                    : 'Skip@Pass (mín. 8 caracteres)'
+                }
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="text-xs sm:text-sm rounded-xl"
               />
             </div>
+
+            {editingUser &&
+              password &&
+              currentUser?.role !== 'Administrador' &&
+              editingUser.id === currentUser?.id && (
+                <div className="space-y-1.5 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                  <Label className="text-xs font-semibold text-amber-900">
+                    Senha Atual (obrigatória para vendedor) *
+                  </Label>
+                  <Input
+                    type="password"
+                    placeholder="Informe a sua senha atual"
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    className="text-xs sm:text-sm rounded-xl bg-white"
+                  />
+                </div>
+              )}
 
             <DialogFooter className="gap-2 sm:gap-0 pt-3 border-t border-slate-100">
               <Button
@@ -512,6 +623,94 @@ export default function Users() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Modal Dedicado para Alteração de Senha */}
+      <Dialog open={passwordModalOpen} onOpenChange={setPasswordModalOpen}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <div className="h-10 w-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mb-1">
+              <KeyRound className="h-5 w-5" />
+            </div>
+            <DialogTitle className="text-base font-bold text-slate-900">
+              Alterar Senha de {targetPasswordUser?.name}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              {currentUser?.role === 'Administrador' && targetPasswordUser?.id !== currentUser?.id
+                ? 'Como Administrador, você pode redefinir diretamente a senha de acesso deste colaborador.'
+                : 'Defina uma nova senha de no mínimo 8 caracteres para acesso ao sistema.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSavePassword} className="space-y-4 pt-2">
+            {/* Campo de Senha Atual exigido se o vendedor estiver alterando a própria senha */}
+            {targetPasswordUser?.id === currentUser?.id &&
+              currentUser?.role !== 'Administrador' && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Senha Atual *</Label>
+                  <Input
+                    type="password"
+                    placeholder="Sua senha atual"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                    className="text-xs sm:text-sm rounded-xl"
+                  />
+                </div>
+              )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Nova Senha *</Label>
+              <Input
+                type="password"
+                placeholder="Mínimo de 8 caracteres"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength={8}
+                className="text-xs sm:text-sm rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Confirmar Nova Senha *</Label>
+              <Input
+                type="password"
+                placeholder="Repita a nova senha"
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                required
+                minLength={8}
+                className="text-xs sm:text-sm rounded-xl"
+              />
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-3 border-t border-slate-100">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPasswordModalOpen(false)}
+                disabled={changingPassword}
+                className="rounded-xl"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={changingPassword}
+                className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium"
+              >
+                {changingPassword ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Salvando Senha...
+                  </>
+                ) : (
+                  'Salvar Nova Senha'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

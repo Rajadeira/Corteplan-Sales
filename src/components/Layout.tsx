@@ -17,7 +17,19 @@ import {
   Package,
   Settings,
   Download,
+  KeyRound,
+  Loader2,
 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { userService } from '@/services/users'
 import { useAuth } from '@/contexts/AuthContext'
 import { clientService } from '@/services/clients'
 import { quoteService } from '@/services/quotes'
@@ -59,6 +71,13 @@ export default function Layout() {
   // Sidebar collapse state
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Modal de Troca da Própria Senha (disponível para qualquer usuário logado)
+  const [selfPasswordModalOpen, setSelfPasswordModalOpen] = useState(false)
+  const [selfCurrentPassword, setSelfCurrentPassword] = useState('')
+  const [selfNewPassword, setSelfNewPassword] = useState('')
+  const [selfConfirmPassword, setSelfConfirmPassword] = useState('')
+  const [selfChangingPassword, setSelfChangingPassword] = useState(false)
 
   // PWA beforeinstallprompt state
   interface BeforeInstallPromptEvent extends Event {
@@ -341,6 +360,56 @@ export default function Layout() {
     if (path === '/usuarios') return 'Usuários'
     if (path === '/configuracoes') return 'Configurações do Sistema'
     return 'Corteplan Gestão'
+  }
+
+  const handleOpenSelfPasswordModal = () => {
+    setSelfCurrentPassword('')
+    setSelfNewPassword('')
+    setSelfConfirmPassword('')
+    setSelfPasswordModalOpen(true)
+  }
+
+  const handleSaveSelfPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user?.id) return
+
+    if (!selfNewPassword) {
+      toast.error('Informe a nova senha.')
+      return
+    }
+    if (selfNewPassword.length < 8) {
+      toast.error('A nova senha deve ter no mínimo 8 caracteres.')
+      return
+    }
+    if (selfNewPassword !== selfConfirmPassword) {
+      toast.error('A confirmação da nova senha não confere.')
+      return
+    }
+    if (!isAdmin && !selfCurrentPassword) {
+      toast.error('Informe sua senha atual para continuar.')
+      return
+    }
+
+    setSelfChangingPassword(true)
+    try {
+      const res = await userService.changePassword(user.id, {
+        password: selfNewPassword,
+        passwordConfirm: selfConfirmPassword,
+        oldPassword: selfCurrentPassword || undefined,
+      })
+      toast.success(res.message || 'Sua senha foi alterada com sucesso!')
+      setSelfPasswordModalOpen(false)
+    } catch (err: any) {
+      console.error('Erro ao alterar senha própria:', err)
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.response?.message ||
+        err?.message ||
+        'Erro ao alterar sua senha. Verifique a senha atual.'
+      toast.error(errorMsg)
+    } finally {
+      setSelfChangingPassword(false)
+    }
   }
 
   return (
@@ -801,6 +870,10 @@ export default function Layout() {
                     </DropdownMenuItem>
                   </>
                 )}
+                <DropdownMenuItem onClick={handleOpenSelfPasswordModal} className="cursor-pointer">
+                  <KeyRound className="mr-2 h-4 w-4 text-amber-600" />
+                  <span>Alterar minha senha</span>
+                </DropdownMenuItem>
                 {isInstallable && (
                   <>
                     <DropdownMenuSeparator />
@@ -836,6 +909,93 @@ export default function Layout() {
           &copy; 2026 CORTEPLAN — Gestão Comercial & Orçamentos. Todos os direitos reservados.
         </footer>
       </div>
+
+      {/* Modal de Alteração da Própria Senha (acessível por qualquer perfil no dropdown) */}
+      <Dialog open={selfPasswordModalOpen} onOpenChange={setSelfPasswordModalOpen}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <div className="h-10 w-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mb-1">
+              <KeyRound className="h-5 w-5" />
+            </div>
+            <DialogTitle className="text-base font-bold text-slate-900">
+              Alterar Minha Senha
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              {isAdmin
+                ? 'Defina sua nova senha de acesso ao sistema (mínimo de 8 caracteres).'
+                : 'Informe sua senha atual e a nova senha para atualizar seu acesso.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveSelfPassword} className="space-y-4 pt-2">
+            {!isAdmin && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Senha Atual *</Label>
+                <Input
+                  type="password"
+                  placeholder="Digite sua senha atual"
+                  value={selfCurrentPassword}
+                  onChange={(e) => setSelfCurrentPassword(e.target.value)}
+                  required
+                  className="text-xs sm:text-sm rounded-xl"
+                />
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Nova Senha *</Label>
+              <Input
+                type="password"
+                placeholder="Mínimo de 8 caracteres"
+                value={selfNewPassword}
+                onChange={(e) => setSelfNewPassword(e.target.value)}
+                required
+                minLength={8}
+                className="text-xs sm:text-sm rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Confirmar Nova Senha *</Label>
+              <Input
+                type="password"
+                placeholder="Repita a nova senha"
+                value={selfConfirmPassword}
+                onChange={(e) => setSelfConfirmPassword(e.target.value)}
+                required
+                minLength={8}
+                className="text-xs sm:text-sm rounded-xl"
+              />
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-3 border-t border-slate-100">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSelfPasswordModalOpen(false)}
+                disabled={selfChangingPassword}
+                className="rounded-xl"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={selfChangingPassword}
+                className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white font-medium"
+              >
+                {selfChangingPassword ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  'Salvar Nova Senha'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
