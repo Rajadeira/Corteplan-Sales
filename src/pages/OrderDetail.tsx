@@ -106,13 +106,28 @@ export default function OrderDetail() {
   // Dispara print se ?print=true estiver na URL
   useEffect(() => {
     if (searchParams.get('print') === 'true' && order && !loading) {
+      const originalTitle = document.title
+      const clientName = (order.expand?.client?.name || 'CLIENTE').toUpperCase().trim()
+      document.title = `${clientName} - PEDIDO ${order.order_number}`
+
       if (layoutConfig.printSettings) {
         applyDynamicPrintStyles(layoutConfig.printSettings)
       }
+
+      const restore = () => {
+        document.title = originalTitle
+        window.removeEventListener('afterprint', restore)
+      }
+      window.addEventListener('afterprint', restore)
+
       const timer = setTimeout(() => {
         window.print()
       }, 500)
-      return () => clearTimeout(timer)
+      return () => {
+        clearTimeout(timer)
+        window.removeEventListener('afterprint', restore)
+        document.title = originalTitle
+      }
     }
   }, [searchParams, order, loading, layoutConfig.printSettings])
 
@@ -845,7 +860,7 @@ export default function OrderDetail() {
         onClose={() => setIsPrintModalOpen(false)}
         currentSettings={layoutConfig.printSettings}
         layoutConfig={layoutConfig}
-        documentTitle={`Pedido Nº ${order.order_number} - Corteplan`}
+        documentTitle={`${(client?.name || 'CLIENTE').toUpperCase().trim()} - PEDIDO ${order.order_number}`}
         onApplyAndPrint={handleApplyAndPrint}
         onSaveSettings={handleSavePrintSettings}
         isSaving={savingLayout}

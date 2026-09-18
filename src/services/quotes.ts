@@ -229,4 +229,32 @@ export const quoteService = {
   async delete(id: string): Promise<boolean> {
     return pb.collection('quotes').delete(id)
   },
+
+  /**
+   * Obtém histórico recente de itens utilizados em orçamentos anteriores
+   */
+  async getRecentItemsHistory(limit: number = 30): Promise<QuoteItem[]> {
+    try {
+      const records = await pb.collection('quotes').getList<QuoteRecord>(1, limit, {
+        sort: '-created',
+        fields: 'id,items,quote_number',
+      })
+      const allItems: QuoteItem[] = []
+      const seenDescriptions = new Set<string>()
+
+      for (const record of records.items) {
+        if (!Array.isArray(record.items)) continue
+        for (const it of record.items) {
+          const descKey = (it.description || '').trim().toLowerCase()
+          if (!descKey || seenDescriptions.has(descKey)) continue
+          seenDescriptions.add(descKey)
+          allItems.push(it)
+        }
+      }
+      return allItems
+    } catch (err) {
+      console.warn('Erro ao carregar histórico de itens de orçamentos:', err)
+      return []
+    }
+  },
 }

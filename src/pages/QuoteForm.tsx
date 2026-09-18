@@ -19,12 +19,20 @@ import {
   Upload,
   X,
   ShieldAlert,
+  Package,
 } from 'lucide-react'
 import { canManageRecord } from '@/lib/permissions'
 import { compressProductImage } from '@/lib/imageUtils'
 import { quoteService } from '@/services/quotes'
 import { clientService } from '@/services/clients'
 import { userService } from '@/services/users'
+import { itemService } from '@/services/items'
+import {
+  PAYMENT_CONDITION_PRESETS,
+  generateDownPaymentWithInstallments,
+  generateEqualInstallments,
+  rebalanceInstallments,
+} from '@/lib/installmentsHelper'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
   ClientRecord,
@@ -33,6 +41,7 @@ import type {
   QuoteInstallment,
   AppUserRecord,
   ItemCategory,
+  ItemCatalogRecord,
 } from '@/types'
 import {
   formatCurrencyBRL,
@@ -133,6 +142,11 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
     },
   ])
 
+  // Catálogo e histórico de itens para autocomplete
+  const [catalogItems, setCatalogItems] = useState<ItemCatalogRecord[]>([])
+  const [recentQuoteItems, setRecentQuoteItems] = useState<QuoteItem[]>([])
+  const [activeItemDropdownIndex, setActiveItemDropdownIndex] = useState<number | null>(null)
+
   // Estado de carregamento e envio
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -146,12 +160,16 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
     const initialize = async () => {
       setLoading(true)
       try {
-        const [clientList, usersData] = await Promise.all([
+        const [clientList, usersData, catalogList, recentQuotesItems] = await Promise.all([
           clientService.getAll(),
           userService.getAll().catch(() => []),
+          itemService.getAll().catch(() => []),
+          quoteService.getRecentItemsHistory(40).catch(() => []),
         ])
         setClients(clientList)
         setUsersList(usersData)
+        setCatalogItems(catalogList)
+        setRecentQuoteItems(recentQuotesItems)
 
         if (isEditing && id) {
           const q = await quoteService.getById(id)
@@ -309,30 +327,46 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
     commissionPercent,
   )
 
-  // Gerador automático de parcelas sugeridas a partir do total
+  // Aplicar condição de pagamento com geração automática de parcelas
+  const handleApplyPaymentPreset = (
+    presetId: string,
+    presetLabel: string,
+    generator: (total: number, baseDate?: Date) => QuoteInstallment[],
+  ) => {
+    setPaymentTerms(presetLabel)
+    if (total <= 0) {
+      toast.info(
+        `Condição "${presetLabel}" selecionada. O valor das parcelas será calculado assim que adicionar itens.`,
+      )
+      return
+    }
+    const generated = generator(total, new Date())
+    setInstallments(generated)
+    toast.success(`Condição "${presetLabel}" aplicada com ${generated.length} parcelas calculadas!`)
+  }
+
+  // Gerador automático de parcelas sugeridas a partir do total (2x, 3x, 4x, etc.)
   const handleAutoGenerateInstallments = (count: number) => {
     if (total <= 0) {
       toast.warning('Adicione produtos para gerar as parcelas com base no valor total.')
       return
     }
-    const newInstallments: QuoteInstallment[] = []
-    const baseValue = Math.floor((total / count) * 100) / 100
-    const diff = Math.round((total - baseValue * count) * 100) / 100
+    const generated = generateEqualInstallments(count, total, new Date())
+    setInstallments(generated)
+    setPaymentTerms(`${count}x`)
+    toast.success(`${count} parcelas iguais geradas automaticamente!`)
+  }
 
-    const today = new Date()
-
-    for (let i = 1; i <= count; i++) {
-      const d = new Date(today)
-      d.setMonth(d.getMonth() + (i - 1))
-      newInstallments.push({
-        number: i,
-        date: d.toISOString().split('T')[0],
-        method: 'Boleto',
-        value: i === 1 ? Math.round((baseValue + diff) * 100) / 100 : baseValue,
-      })
+  // Gerador específico: Entrada 50% + 2 parcelas (total 3 parcelas)
+  const handleGenerate50Plus2 = () => {
+    if (total <= 0) {
+      toast.warning('Adicione produtos para gerar as parcelas com base no valor total.')
+      return
     }
-    setInstallments(newInstallments)
-    toast.success(`${count} parcelas geradas automaticamente!`)
+    const generated = generateDownPaymentWithInstallments(50, 2, total, new Date())
+    setInstallments(generated)
+    setPaymentTerms('Entrada 50% + 2 parcelas')
+    toast.success('Entrada 50% + 2 parcelas calculadas com sucesso!')
   }
 
   // Adicionar parcela manual
@@ -345,13 +379,17 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
     const d = new Date(lastDate)
     d.setMonth(d.getMonth() + 1)
 
+    // Se houver valor remanescente em relação ao total, preenche na nova parcela
+    const sumCurrent = installments.reduce((acc, it) => acc + (Number(it.value) || 0), 0)
+    const remaining = Math.max(0, Math.round((total - sumCurrent) * 100) / 100)
+
     setInstallments((prev) => [
       ...prev,
       {
         number: nextNum,
         date: d.toISOString().split('T')[0],
         method: 'Boleto',
-        value: 0,
+        value: remaining,
       },
     ])
   }
@@ -361,24 +399,50 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
       toast.warning('Deve haver pelo menos 1 parcela.')
       return
     }
-    setInstallments((prev) =>
-      prev.filter((_, i) => i !== index).map((item, i) => ({ ...item, number: i + 1 })),
-    )
+    const remainingList = installments
+      .filter((_, i) => i !== index)
+      .map((item, i) => ({ ...item, number: i + 1 }))
+    // Rebalanceia a última parcela restante para fechar a soma no total
+    if (total > 0 && remainingList.length > 0) {
+      let sumExceptLast = 0
+      for (let i = 0; i < remainingList.length - 1; i++) {
+        sumExceptLast += Number(remainingList[i].value) || 0
+      }
+      const lastIdx = remainingList.length - 1
+      remainingList[lastIdx].value = Math.max(0, Math.round((total - sumExceptLast) * 100) / 100)
+    }
+    setInstallments(remainingList)
   }
 
+  // Mudança em parcela com rebalanceamento dinâmico automático do restante
   const handleInstallmentChange = (
     index: number,
     field: keyof QuoteInstallment,
     val: string | number,
   ) => {
-    setInstallments((prev) => {
-      const next = [...prev]
-      next[index] = {
-        ...next[index],
-        [field]: val,
+    if (field === 'value') {
+      const numericVal = parseFloat(String(val)) || 0
+      // Reajuste dinâmico: as demais parcelas são recalculadas para fechar a soma no total da proposta
+      if (total > 0 && installments.length > 1) {
+        const rebalanced = rebalanceInstallments(installments, index, numericVal, total)
+        setInstallments(rebalanced)
+      } else {
+        setInstallments((prev) => {
+          const next = [...prev]
+          next[index] = { ...next[index], value: numericVal }
+          return next
+        })
       }
-      return next
-    })
+    } else {
+      setInstallments((prev) => {
+        const next = [...prev]
+        next[index] = {
+          ...next[index],
+          [field]: val,
+        }
+        return next
+      })
+    }
   }
 
   // Adicionar novo item
@@ -406,6 +470,105 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
       }
       return next
     })
+  }
+
+  // Preenche os campos do item ao selecionar uma sugestão do dropdown
+  const handleSelectSuggestedItem = (
+    index: number,
+    suggestion: {
+      description: string
+      unit?: 'un' | 'm²' | 'm' | 'kit' | 'hora'
+      unit_price?: number
+      category?: ItemCategory
+      tax?: number
+      technical_description?: string
+      image?: string
+    },
+  ) => {
+    setItems((prev) => {
+      const next = [...prev]
+      const current = next[index]
+      next[index] = {
+        ...current,
+        description: suggestion.description,
+        unit: (suggestion.unit as 'un' | 'm²' | 'm' | 'kit' | 'hora') || current.unit || 'un',
+        unit_price:
+          suggestion.unit_price !== undefined && suggestion.unit_price > 0
+            ? suggestion.unit_price
+            : current.unit_price,
+        category: suggestion.category || current.category || 'Mobiliário',
+        tax: suggestion.tax !== undefined ? suggestion.tax : current.tax,
+        technical_description:
+          suggestion.technical_description || current.technical_description || '',
+        image: suggestion.image || current.image || '',
+      }
+      return next
+    })
+    setActiveItemDropdownIndex(null)
+    toast.success(`Item "${suggestion.description}" preenchido com sucesso!`)
+  }
+
+  // Obtém sugestões combinadas (Catálogo de produtos + histórico de orçamentos) para o item atual
+  const getItemSuggestions = (query: string) => {
+    const clean = (query || '').trim().toLowerCase()
+    if (!clean) return []
+
+    const results: Array<{
+      id: string
+      description: string
+      unit?: 'un' | 'm²' | 'm' | 'kit' | 'hora'
+      unit_price?: number
+      category?: ItemCategory
+      tax?: number
+      technical_description?: string
+      image?: string
+      source: 'catalog' | 'history'
+    }> = []
+
+    const seenDesc = new Set<string>()
+
+    // 1. Catálogo de Itens cadastrados
+    for (const catItem of catalogItems) {
+      const d = (catItem.description || '').trim()
+      const dLower = d.toLowerCase()
+      const codeMatch = catItem.code && catItem.code.toLowerCase().includes(clean)
+      if ((dLower.includes(clean) || codeMatch) && !seenDesc.has(dLower)) {
+        seenDesc.add(dLower)
+        results.push({
+          id: `cat-${catItem.id}`,
+          description: d,
+          unit: catItem.unit,
+          unit_price: catItem.unit_price,
+          category: catItem.category,
+          tax: catItem.default_tax,
+          technical_description: catItem.technical_description,
+          image: catItem.image,
+          source: 'catalog',
+        })
+      }
+    }
+
+    // 2. Histórico de orçamentos anteriores
+    for (const histItem of recentQuoteItems) {
+      const d = (histItem.description || '').trim()
+      const dLower = d.toLowerCase()
+      if (dLower.includes(clean) && !seenDesc.has(dLower)) {
+        seenDesc.add(dLower)
+        results.push({
+          id: `hist-${dLower}`,
+          description: d,
+          unit: histItem.unit,
+          unit_price: histItem.unit_price,
+          category: (histItem.category as ItemCategory) || 'Mobiliário',
+          tax: histItem.tax,
+          technical_description: histItem.technical_description,
+          image: histItem.image,
+          source: 'history',
+        })
+      }
+    }
+
+    return results.slice(0, 8)
   }
 
   // Remover item
@@ -513,6 +676,9 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
           status: updatedStatus,
         })
 
+        // Exportação automática de itens criados/usados no orçamento para o menu de produtos
+        await itemService.exportItemsFromQuote(cleanItems, user?.id)
+
         toast.success('Orçamento CORTEPLAN atualizado com sucesso!')
         navigate(`/orcamentos/${updated.id}`)
       } else {
@@ -524,6 +690,9 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
           },
           userName,
         )
+
+        // Exportação automática de itens criados/usados no orçamento para o menu de produtos
+        await itemService.exportItemsFromQuote(cleanItems, user?.id)
 
         toast.success(
           targetStatus === 'Enviado'
@@ -578,7 +747,17 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
   }
 
   return (
-    <div className="space-y-6 pb-16">
+    <div
+      className="space-y-6 pb-16"
+      onClick={(e) => {
+        // Fecha dropdowns de autocomplete ao clicar fora
+        const target = e.target as HTMLElement
+        if (!target.closest('.relative')) {
+          setActiveItemDropdownIndex(null)
+          setClientDropdownOpen(false)
+        }
+      }}
+    >
       {/* Botão de retorno e Header */}
       <div>
         <Button
@@ -777,18 +956,123 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                       )}
                     </div>
 
-                    {/* Título do produto e Categoria (incluindo Frete e Instalação) */}
+                    {/* Título do produto com Autocomplete (Catálogo de Itens + Histórico) e Categoria */}
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                      <div className="sm:col-span-8 space-y-1">
-                        <Label className="text-[11px] font-semibold text-slate-700">
-                          Título do Item (ex: Carrinho Gourmet com Testeira.)
-                        </Label>
-                        <Input
-                          placeholder="Ex: Carrinho Gourmet com Testeira."
-                          value={item.description}
-                          onChange={(e) => handleItemChange(index, 'description', e.target.value)}
-                          className="bg-white text-xs sm:text-sm h-10 font-medium"
-                        />
+                      <div className="sm:col-span-8 space-y-1 relative">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-semibold text-slate-700">
+                            Título do Item (ex: Carrinho Gourmet com Testeira.)
+                          </Label>
+                          <span className="text-[10px] text-slate-400">
+                            Autocomplete com catálogo &amp; propostas
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <Input
+                            placeholder="Digite para buscar produtos cadastrados ou usados anteriormente..."
+                            value={item.description}
+                            onChange={(e) => {
+                              handleItemChange(index, 'description', e.target.value)
+                              setActiveItemDropdownIndex(index)
+                            }}
+                            onFocus={() => setActiveItemDropdownIndex(index)}
+                            className="bg-white text-xs sm:text-sm h-10 font-medium pr-8"
+                          />
+                          {item.description && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleItemChange(index, 'description', '')
+                                setActiveItemDropdownIndex(null)
+                              }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Dropdown de sugestões dinâmicas */}
+                        {activeItemDropdownIndex === index &&
+                          item.description.trim().length >= 1 && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-40 max-h-64 overflow-y-auto p-1.5 space-y-1">
+                              {(() => {
+                                const suggestions = getItemSuggestions(item.description)
+                                if (suggestions.length === 0) {
+                                  return (
+                                    <div className="p-3 text-center text-xs text-slate-400">
+                                      Nenhum item similar encontrado no catálogo. Este novo item
+                                      será cadastrado automaticamente ao salvar!
+                                    </div>
+                                  )
+                                }
+                                return (
+                                  <>
+                                    <div className="px-2 py-1 text-[10px] font-semibold uppercase text-slate-400 flex items-center justify-between border-b border-slate-100">
+                                      <span>Sugestões encontradas ({suggestions.length})</span>
+                                      <span>Clique para preencher</span>
+                                    </div>
+                                    {suggestions.map((sug) => (
+                                      <button
+                                        key={sug.id}
+                                        type="button"
+                                        onMouseDown={(e) => {
+                                          // Usa onMouseDown para acionar antes do onBlur do input
+                                          e.preventDefault()
+                                          handleSelectSuggestedItem(index, sug)
+                                        }}
+                                        className="w-full flex items-center justify-between gap-3 p-2 rounded-lg text-left hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200"
+                                      >
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                          {sug.image ? (
+                                            <img
+                                              src={sug.image}
+                                              alt={sug.description}
+                                              className="h-8 w-8 rounded object-cover border border-slate-200 bg-white shrink-0"
+                                            />
+                                          ) : (
+                                            <div className="h-8 w-8 rounded bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                                              <Package className="h-4 w-4" />
+                                            </div>
+                                          )}
+                                          <div className="truncate">
+                                            <div className="text-xs font-semibold text-slate-900 truncate">
+                                              {sug.description}
+                                            </div>
+                                            <div className="text-[10px] text-slate-500 flex items-center gap-1.5 truncate">
+                                              <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-medium">
+                                                {sug.category || 'Mobiliário'}
+                                              </span>
+                                              <span>•</span>
+                                              <span>Un: {sug.unit || 'un'}</span>
+                                              {sug.source === 'catalog' ? (
+                                                <span className="text-emerald-700 font-medium">
+                                                  • Catálogo
+                                                </span>
+                                              ) : (
+                                                <span className="text-blue-700 font-medium">
+                                                  • Orçamento anterior
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div className="text-right shrink-0">
+                                          <div className="text-xs font-mono font-bold text-[#3A3A3C]">
+                                            {formatCurrencyBRL(sug.unit_price || 0)}
+                                          </div>
+                                          <span className="text-[10px] text-slate-400">
+                                            unitário
+                                          </span>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </>
+                                )
+                              })()}
+                            </div>
+                          )}
                       </div>
 
                       <div className="sm:col-span-4 space-y-1">
@@ -1323,15 +1607,55 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">
-                  Condição de Pagamento (resumo)
-                </Label>
-                <Input
-                  placeholder="Ex: Entrada 50% + 2x"
-                  value={paymentTerms}
-                  onChange={(e) => setPaymentTerms(e.target.value)}
-                  className="text-xs sm:text-sm"
-                />
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Condição de Pagamento (resumo)
+                  </Label>
+                  <span className="text-[10px] text-amber-600 font-medium">Gera parcelas</span>
+                </div>
+                <div className="relative">
+                  <Input
+                    placeholder="Ex: Entrada 50% + 2 parcelas"
+                    value={paymentTerms}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setPaymentTerms(val)
+                    }}
+                    className="text-xs sm:text-sm pr-20"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      // Procura preset ou infere do texto digitado
+                      const matched = PAYMENT_CONDITION_PRESETS.find(
+                        (p) => p.label.toLowerCase() === paymentTerms.trim().toLowerCase(),
+                      )
+                      if (matched) {
+                        handleApplyPaymentPreset(matched.id, matched.label, matched.generate)
+                      } else {
+                        // Tenta gerar a partir do texto
+                        import('@/lib/installmentsHelper').then(
+                          ({ generateInstallmentsFromTerms }) => {
+                            const res = generateInstallmentsFromTerms(paymentTerms, total)
+                            if (res && res.length > 0) {
+                              setInstallments(res)
+                              toast.success(
+                                `Condição aplicada com ${res.length} parcelas calculadas!`,
+                              )
+                            } else {
+                              toast.info('Condição salva no texto da proposta.')
+                            }
+                          },
+                        )
+                      }
+                    }}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 px-2 text-[11px] font-semibold text-amber-700 hover:bg-amber-50"
+                  >
+                    Aplicar
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -1362,8 +1686,27 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                 </p>
               </div>
 
-              {/* Botões rápidos de geração */}
-              <div className="flex items-center gap-1.5">
+              {/* Botões rápidos de geração e Condições pré-definidas */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleGenerate50Plus2}
+                  className="text-xs h-7 rounded-lg font-semibold bg-amber-500/10 text-amber-900 hover:bg-amber-500/20 border border-amber-300"
+                  title="Entrada 50% à vista + 2 parcelas (30 e 60 dias)"
+                >
+                  Entrada 50% + 2x
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAutoGenerateInstallments(1)}
+                  className="text-xs h-7 rounded-lg"
+                >
+                  À Vista
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -1380,7 +1723,7 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                   onClick={() => handleAutoGenerateInstallments(3)}
                   className="text-xs h-7 rounded-lg"
                 >
-                  3x (Entrada + 2x)
+                  3x
                 </Button>
                 <Button
                   type="button"
@@ -1392,6 +1735,42 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                   4x
                 </Button>
               </div>
+            </div>
+
+            {/* Presets de Condição de Pagamento em Dropdown/Chips */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 pb-2 border-b border-slate-100">
+              <span className="text-[11px] font-semibold text-slate-500">Condições sugeridas:</span>
+              {PAYMENT_CONDITION_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => handleApplyPaymentPreset(preset.id, preset.label, preset.generate)}
+                  className={`text-[11px] px-2.5 py-1 rounded-md border transition-all ${
+                    paymentTerms === preset.label
+                      ? 'bg-[#3A3A3C] text-white border-[#3A3A3C] font-semibold'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                  title={preset.description}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Dica de auto-ajuste */}
+            <div className="text-[11px] text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/80 flex items-center justify-between">
+              <span>
+                💡 <strong>Ajuste dinâmico:</strong> Ao alterar manualmente o valor de qualquer
+                parcela, as seguintes são recalculadas automaticamente para fechar exatamente no
+                total da proposta.
+              </span>
+              <span className="font-mono font-bold text-slate-700 ml-2 whitespace-nowrap">
+                Total parcelas:{' '}
+                {formatCurrencyBRL(
+                  installments.reduce((acc, i) => acc + (Number(i.value) || 0), 0),
+                )}{' '}
+                / {formatCurrencyBRL(total)}
+              </span>
             </div>
 
             {/* Lista de Parcelas */}

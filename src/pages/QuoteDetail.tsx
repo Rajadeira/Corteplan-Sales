@@ -216,13 +216,28 @@ export default function QuoteDetail() {
   // Trigger print se ?print=true estiver na URL
   useEffect(() => {
     if (searchParams.get('print') === 'true' && quote && !loading) {
+      const originalTitle = document.title
+      const clientName = (quote.expand?.client?.name || 'CLIENTE').toUpperCase().trim()
+      document.title = `${clientName} - PROPOSTA ${quote.quote_number}`
+
       if (layoutConfig.printSettings) {
         applyDynamicPrintStyles(layoutConfig.printSettings)
       }
+
+      const restore = () => {
+        document.title = originalTitle
+        window.removeEventListener('afterprint', restore)
+      }
+      window.addEventListener('afterprint', restore)
+
       const timer = setTimeout(() => {
         window.print()
       }, 500)
-      return () => clearTimeout(timer)
+      return () => {
+        clearTimeout(timer)
+        window.removeEventListener('afterprint', restore)
+        document.title = originalTitle
+      }
     }
   }, [searchParams, quote, loading, layoutConfig.printSettings])
 
@@ -1131,7 +1146,7 @@ export default function QuoteDetail() {
         onClose={() => setIsPrintModalOpen(false)}
         currentSettings={layoutConfig.printSettings}
         layoutConfig={layoutConfig}
-        documentTitle={`Proposta Nº ${quote.quote_number} - Corteplan`}
+        documentTitle={`${(client?.name || 'CLIENTE').toUpperCase().trim()} - PROPOSTA ${quote.quote_number}`}
         onApplyAndPrint={handleApplyAndPrint}
         onSaveSettings={handleSavePrintSettings}
         isSaving={savingLayout}

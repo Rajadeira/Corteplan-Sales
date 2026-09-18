@@ -212,17 +212,35 @@ export default function PrintSettingsModal({
     toast.success('Preset Espaçado aplicado.')
   }
 
-  const handlePrint = () => {
+  const triggerPrintWithTitle = () => {
+    const originalTitle = document.title
+    if (documentTitle) {
+      document.title = documentTitle
+    }
     applyDynamicPrintStyles(settings)
     onApplyAndPrint(settings)
+
+    // Restaura document.title após o fechamento da janela de impressão
+    const restoreTitle = () => {
+      document.title = originalTitle
+      window.removeEventListener('afterprint', restoreTitle)
+    }
+    window.addEventListener('afterprint', restoreTitle)
+    // Fallback de segurança para restauração do título
+    setTimeout(() => {
+      document.title = originalTitle
+    }, 5000)
+  }
+
+  const handlePrint = () => {
+    triggerPrintWithTitle()
   }
 
   const handleSaveAndPrint = async () => {
-    applyDynamicPrintStyles(settings)
     if (onSaveSettings) {
       await onSaveSettings(settings)
     }
-    onApplyAndPrint(settings)
+    triggerPrintWithTitle()
   }
 
   if (!isOpen) return null
