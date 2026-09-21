@@ -50,4 +50,12 @@ export const settingsService = {
   async saveTaxSettings(data: TaxSettings): Promise<AppSettingRecord> {
     return this.setByKey('default_taxes', data, 'Impostos padrão e condições comerciais')
   },
+
+  async getNfeSettings(): Promise<import('@/types').NfeSettings | null> {
+    return this.getByKey('nfe_settings') as Promise<import('@/types').NfeSettings | null>
+  },
+
+  async saveNfeSettings(data: import('@/types').NfeSettings): Promise<AppSettingRecord> {
+    return this.setByKey('nfe_settings', data, 'Configurações de integração de emissão de NF-e')
+  },
 }

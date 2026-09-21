@@ -21,6 +21,7 @@ import OrderDetail from './pages/OrderDetail'
 import Users from './pages/Users'
 import Items from './pages/Items'
 import SettingsPage from './pages/Settings'
+import Financial from './pages/Financial'
 import NotFound from './pages/NotFound'
 const App = () => (
   <BrowserRouter>
@@ -57,6 +58,30 @@ const App = () => (
               element={
                 <ProtectedRoute requireAdmin>
                   <Users />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/financeiro"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <Financial />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/financeiro/notas"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <Navigate to="/financeiro?tab=notas" replace />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/financeiro/fluxo"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <Navigate to="/financeiro?tab=fluxo" replace />
                 </ProtectedRoute>
               }
             />

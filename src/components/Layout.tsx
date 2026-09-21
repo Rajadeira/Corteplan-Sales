@@ -19,6 +19,8 @@ import {
   Download,
   KeyRound,
   Loader2,
+  DollarSign,
+  FileSpreadsheet,
 } from 'lucide-react'
 import {
   Dialog,
@@ -59,6 +61,7 @@ const navItems = [
   { name: 'Itens', path: '/itens', icon: Package, adminOnly: false },
   { name: 'Clientes', path: '/clientes', icon: Users, adminOnly: false },
   { name: 'Usuários', path: '/usuarios', icon: UserCheck, adminOnly: true },
+  { name: 'Financeiro', path: '/financeiro', icon: DollarSign, adminOnly: true },
   { name: 'Configurações', path: '/configuracoes', icon: Settings, adminOnly: true },
 ]
 
@@ -359,6 +362,7 @@ export default function Layout() {
     if (path.startsWith('/pedidos/')) return 'Detalhes do Pedido'
     if (path === '/itens') return 'Catálogo de Itens'
     if (path === '/usuarios') return 'Usuários'
+    if (path.startsWith('/financeiro')) return 'Módulo Financeiro & Fiscal'
     if (path === '/configuracoes') return 'Configurações do Sistema'
     return 'Corteplan Gestão'
   }
@@ -861,6 +865,13 @@ export default function Layout() {
                     >
                       <UserCheck className="mr-2 h-4 w-4 text-slate-500" />
                       <span>Usuários</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => navigate('/financeiro')}
+                      className="cursor-pointer"
+                    >
+                      <DollarSign className="mr-2 h-4 w-4 text-[#F08A24]" />
+                      <span>Financeiro</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => navigate('/configuracoes')}

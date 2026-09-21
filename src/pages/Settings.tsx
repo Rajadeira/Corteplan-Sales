@@ -11,6 +11,10 @@ import {
   FileCheck,
   CheckCircle2,
   RefreshCw,
+  FileSpreadsheet,
+  KeyRound,
+  ExternalLink,
+  ShieldAlert,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { settingsService } from '@/services/settings'
@@ -18,13 +22,20 @@ import { quoteService } from '@/services/quotes'
 import { orderService } from '@/services/orders'
 import { clientService } from '@/services/clients'
 import { itemService } from '@/services/items'
-import type { CompanySettings, TaxSettings } from '@/types'
+import type { CompanySettings, TaxSettings, NfeSettings } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export default function SettingsPage() {
   const { user } = useAuth()
@@ -35,10 +46,21 @@ export default function SettingsPage() {
   const [savingCompany, setSavingCompany] = useState(false)
   const [savingTaxes, setSavingTaxes] = useState(false)
   const [savingSeq, setSavingSeq] = useState(false)
+  const [savingNfe, setSavingNfe] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [lastQuoteNum, setLastQuoteNum] = useState<number>(140)
   const [lastOrderNum, setLastOrderNum] = useState<number>(0)
+
+  // NFe Form
+  const [nfeConfig, setNfeConfig] = useState<NfeSettings>({
+    provider: 'Focus NFe',
+    environment: 'homologacao',
+    apiKey: '',
+    companyId: '',
+    series: '1',
+    autoIssueOnCompletedOrder: true,
+  })
 
   // Company Form
   const [company, setCompany] = useState<CompanySettings>({
@@ -71,11 +93,12 @@ export default function SettingsPage() {
     async function loadData() {
       try {
         setLoading(true)
-        const [compData, taxData, quoteSeqVal, orderSeqVal] = await Promise.all([
+        const [compData, taxData, quoteSeqVal, orderSeqVal, nfeData] = await Promise.all([
           settingsService.getCompanySettings(),
           settingsService.getTaxSettings(),
           settingsService.getByKey<number>('last_quote_number'),
           settingsService.getByKey<number>('last_order_number'),
+          settingsService.getNfeSettings(),
         ])
         if (compData) setCompany(compData)
         if (taxData) setTaxes(taxData)
@@ -85,6 +108,7 @@ export default function SettingsPage() {
         if (orderSeqVal !== null && orderSeqVal !== undefined) {
           setLastOrderNum(Number(orderSeqVal))
         }
+        if (nfeData) setNfeConfig(nfeData)
       } catch (err) {
         console.error('Erro ao carregar configurações:', err)
       } finally {
@@ -144,6 +168,28 @@ export default function SettingsPage() {
       })
     } finally {
       setSavingSeq(false)
+    }
+  }
+
+  const handleSaveNfe = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!isAdmin) return
+    try {
+      setSavingNfe(true)
+      await settingsService.saveNfeSettings(nfeConfig)
+      toast({
+        title: 'Configurações de Nota Fiscal Salvas',
+        description:
+          'Credenciais e ambiente do provedor autorizador foram atualizados com sucesso.',
+      })
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar',
+        description: err.message || 'Falha ao salvar configurações de NF-e.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingNfe(false)
     }
   }
 
@@ -317,6 +363,10 @@ export default function SettingsPage() {
           <TabsTrigger value="sequenciais" className="flex items-center gap-2">
             <FileCheck className="h-4 w-4" />
             Numeração Sequencial
+          </TabsTrigger>
+          <TabsTrigger value="nfe" className="flex items-center gap-2">
+            <FileSpreadsheet className="h-4 w-4 text-[#F08A24]" />
+            Nota Fiscal
           </TabsTrigger>
           <TabsTrigger value="backup" className="flex items-center gap-2">
             <Database className="h-4 w-4" />
@@ -699,6 +749,155 @@ export default function SettingsPage() {
                 >
                   <Save className="h-4 w-4 text-[#F08A24]" />
                   {savingSeq ? 'Salvando...' : 'Salvar Numeração Sequencial'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </TabsContent>
+
+        {/* TAB: NOTA FISCAL (NFE INTEGRATION) */}
+        <TabsContent value="nfe">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 space-y-6">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+              <div className="p-2.5 bg-orange-50 text-[#F08A24] rounded-lg">
+                <FileSpreadsheet className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-900 text-base">
+                  Integração de Nota Fiscal Eletrônica (NF-e de Venda)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Configure o provedor autorizador via API-key para emissão e cancelamento das notas
+                  dos pedidos concluídos.
+                </p>
+              </div>
+            </div>
+
+            {/* Explicação importante sobre o certificado digital A1 */}
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
+              <ShieldAlert className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-blue-900 leading-relaxed space-y-1">
+                <strong className="font-semibold block">Certificado Digital A1 no Provedor:</strong>
+                <p>
+                  O certificado digital A1 da empresa deve ser cadastrado diretamente no painel do
+                  provedor autorizador escolhido (ex.: Focus NFe ou NFe.io). O sistema Corteplan
+                  envia os dados fiscais da venda através da API segura e o provedor realiza a
+                  assinatura digital e o envio para a SEFAZ.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveNfe} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-1.5">
+                  <Label htmlFor="nfe_provider">Provedor de Emissão</Label>
+                  <Select
+                    value={nfeConfig.provider}
+                    onValueChange={(val: any) => setNfeConfig({ ...nfeConfig, provider: val })}
+                  >
+                    <SelectTrigger id="nfe_provider" className="rounded-xl">
+                      <SelectValue placeholder="Selecione o provedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Focus NFe">Focus NFe (focusnfe.com.br)</SelectItem>
+                      <SelectItem value="NFe.io">NFe.io (nfe.io)</SelectItem>
+                      <SelectItem value="Outro">Outro Provedor / API Própria</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-[11px] text-slate-500">
+                    Provedor homologado para emissão e consulta do DANFE/XML.
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="nfe_env">Ambiente de Operação</Label>
+                  <Select
+                    value={nfeConfig.environment}
+                    onValueChange={(val: any) => setNfeConfig({ ...nfeConfig, environment: val })}
+                  >
+                    <SelectTrigger id="nfe_env" className="rounded-xl">
+                      <SelectValue placeholder="Selecione o ambiente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="homologacao">
+                        Homologação (Ambiente de Testes SEFAZ)
+                      </SelectItem>
+                      <SelectItem value="producao">
+                        Produção (Notas com validade jurídica)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-[11px] text-slate-500">
+                    Utilize homologação para testar antes de emitir notas reais na SEFAZ.
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label htmlFor="nfe_token" className="flex items-center gap-1.5">
+                    <KeyRound className="h-4 w-4 text-amber-600" />
+                    API Token / Chave Secreta do Provedor *
+                  </Label>
+                  <Input
+                    id="nfe_token"
+                    type="password"
+                    placeholder="Ex: oA9sD8f7G6h5J4k3L2... (fornecido pelo provedor)"
+                    value={nfeConfig.apiKey}
+                    onChange={(e) => setNfeConfig({ ...nfeConfig, apiKey: e.target.value })}
+                    className="font-mono text-xs sm:text-sm rounded-xl"
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    Armazenada com segurança no banco de dados. Apenas o backend do sistema utiliza
+                    essa chave para disparar as chamadas à SEFAZ.
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="nfe_series">Série Padrão da NF-e</Label>
+                  <Input
+                    id="nfe_series"
+                    placeholder="1"
+                    value={nfeConfig.series || '1'}
+                    onChange={(e) => setNfeConfig({ ...nfeConfig, series: e.target.value })}
+                    className="font-mono text-xs sm:text-sm rounded-xl"
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    Série padrão autorizada para emissão de NF-e na sua inscrição estadual.
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="nfe_company_id">ID da Empresa no Provedor (Opcional)</Label>
+                  <Input
+                    id="nfe_company_id"
+                    placeholder="Ex: id da conta/empresa caso exigido pelo provedor"
+                    value={nfeConfig.companyId || ''}
+                    onChange={(e) => setNfeConfig({ ...nfeConfig, companyId: e.target.value })}
+                    className="text-xs sm:text-sm rounded-xl"
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    Utilizado principalmente para contas multi-empresas no NFe.io.
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <a
+                  href="https://focusnfe.github.io/docs/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-[#E66812] hover:underline flex items-center gap-1 font-medium"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Ver documentação Focus NFe
+                </a>
+
+                <Button
+                  type="submit"
+                  disabled={savingNfe}
+                  className="bg-[#3A3A3C] hover:bg-[#2E2E30] text-white gap-2 rounded-xl"
+                >
+                  <Save className="h-4 w-4 text-[#F08A24]" />
+                  {savingNfe ? 'Salvando...' : 'Salvar Configurações de NF-e'}
                 </Button>
               </div>
             </form>

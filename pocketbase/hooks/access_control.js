@@ -236,3 +236,53 @@ onRecordDeleteRequest((e) => {
   }
   e.next()
 }, 'followups')
+
+// 5. Regras estritas para collections financeiras (invoices e cashflow_entries)
+// Bloqueio rigoroso no servidor para não administradores em qualquer requisição de leitura ou escrita
+onRecordCreateRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'invoices')
+
+onRecordUpdateRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'invoices')
+
+onRecordDeleteRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'invoices')
+
+onRecordCreateRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'cashflow_entries')
+
+onRecordUpdateRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'cashflow_entries')
+
+onRecordDeleteRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'cashflow_entries')

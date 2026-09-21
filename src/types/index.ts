@@ -120,6 +120,66 @@ export interface AppSettingRecord extends RecordModel {
   description?: string
 }
 
+export type InvoiceStatus = 'Aguardando Emissão' | 'Emitida' | 'Cancelada' | 'Erro'
+
+export interface InvoiceRecord extends RecordModel {
+  invoice_number?: string
+  series?: string
+  access_key?: string
+  status: InvoiceStatus
+  provider?: string
+  order?: string
+  quote?: string
+  client_name: string
+  client_document?: string
+  total_amount: number
+  issued_at?: string
+  cancelled_at?: string
+  cancel_reason?: string
+  danfe_url?: string
+  xml_url?: string
+  error_message?: string
+  raw_payload?: any
+  raw_response?: any
+  expand?: {
+    order?: OrderRecord
+    quote?: QuoteRecord
+    [key: string]: unknown
+  }
+}
+
+export type CashflowType = 'Entrada' | 'Saída'
+export type CashflowOrigin = 'manual' | 'parcela'
+export type CashflowStatus = 'Pendente' | 'Realizado'
+
+export interface CashflowEntryRecord extends RecordModel {
+  type: CashflowType
+  date: string
+  description: string
+  amount: number
+  category?: string
+  origin: CashflowOrigin
+  status: CashflowStatus
+  order?: string
+  installment_number?: number
+  payment_method?: string
+  received_at?: string
+  notes?: string
+  expand?: {
+    order?: OrderRecord
+    [key: string]: unknown
+  }
+}
+
+export interface NfeSettings {
+  provider: 'Focus NFe' | 'NFe.io' | 'Outro'
+  environment: 'homologacao' | 'producao'
+  apiKey: string
+  companyId?: string
+  series?: string
+  autoIssueOnCompletedOrder?: boolean
+}
+
 export interface StatusHistoryEntry {
   status: QuoteStatus | OrderStatus | string
   changed_at: string

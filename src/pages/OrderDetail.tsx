@@ -12,8 +12,15 @@ import {
   Package,
 } from 'lucide-react'
 import { orderService } from '@/services/orders'
+import { invoiceService } from '@/services/invoices'
 import { useAuth } from '@/contexts/AuthContext'
-import type { OrderRecord, OrderStatus, ProposalLayoutConfig, ProposalBlockId } from '@/types'
+import type {
+  OrderRecord,
+  OrderStatus,
+  ProposalLayoutConfig,
+  ProposalBlockId,
+  InvoiceRecord,
+} from '@/types'
 import { canViewValues, canManageRecord } from '@/lib/permissions'
 import { Lock, ShieldAlert } from 'lucide-react'
 import {
@@ -53,6 +60,7 @@ export default function OrderDetail() {
   const { user } = useAuth()
 
   const [order, setOrder] = useState<OrderRecord | null>(null)
+  const [linkedInvoice, setLinkedInvoice] = useState<InvoiceRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [statusLoading, setStatusLoading] = useState(false)
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
@@ -72,6 +80,12 @@ export default function OrderDetail() {
     try {
       const data = await orderService.getById(id)
       setOrder(data)
+      if (user?.role === 'Administrador') {
+        invoiceService
+          .getByOrderId(data.id)
+          .then(setLinkedInvoice)
+          .catch(() => {})
+      }
       if (data.layout_config && typeof data.layout_config === 'object') {
         setLayoutConfig({
           version: data.layout_config.version || 1,
@@ -412,6 +426,83 @@ export default function OrderDetail() {
           </div>
         )}
       </div>
+
+      {/* BLOCO DA NOTA FISCAL VINCULADA — EXCLUSIVO ADMINISTRADOR (Vendedor não vê nada de NF) */}
+      {user?.role === 'Administrador' && (
+        <div className="print:hidden bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="h-10 w-10 rounded-xl bg-orange-50 text-[#F08A24] flex items-center justify-center shrink-0">
+              <Printer className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                  Nota Fiscal de Venda (NF-e)
+                </span>
+                {linkedInvoice ? (
+                  <Badge
+                    variant="outline"
+                    className={
+                      linkedInvoice.status === 'Emitida'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]'
+                        : linkedInvoice.status === 'Cancelada'
+                          ? 'bg-slate-100 text-slate-600 border-slate-300 text-[10px]'
+                          : 'bg-amber-50 text-amber-700 border-amber-200 text-[10px]'
+                    }
+                  >
+                    {linkedInvoice.status}
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]"
+                  >
+                    Aguardando Emissão
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {linkedInvoice ? (
+                  <>
+                    NF-e{' '}
+                    {linkedInvoice.invoice_number ? `Nº ${linkedInvoice.invoice_number}` : 'S/N'}{' '}
+                    {linkedInvoice.series ? `Série ${linkedInvoice.series}` : ''}{' '}
+                    {linkedInvoice.issued_at
+                      ? `&bull; Emitida em ${formatDateBR(linkedInvoice.issued_at)}`
+                      : ''}
+                  </>
+                ) : (
+                  'Pedido na fila do módulo financeiro para emissão da nota fiscal.'
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+            {linkedInvoice?.danfe_url && linkedInvoice.status === 'Emitida' && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.open(linkedInvoice.danfe_url, '_blank')}
+                className="rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 text-xs gap-1.5"
+              >
+                <Printer className="h-3.5 w-3.5 text-[#F08A24]" />
+                Ver DANFE
+              </Button>
+            )}
+
+            <Button
+              size="sm"
+              onClick={() => navigate('/financeiro?tab=notas')}
+              className="rounded-xl bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white text-xs font-medium"
+            >
+              {linkedInvoice?.status === 'Emitida'
+                ? 'Gerenciar no Financeiro'
+                : 'Emitir no Financeiro'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* =========================================================================
           DOCUMENTO OFICIAL CORTEPLAN — MODELO PEDIDO Nº X (IMPRESSÃO A4)
