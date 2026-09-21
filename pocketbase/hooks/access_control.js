@@ -183,3 +183,56 @@ onRecordDeleteRequest((e) => {
   }
   e.next()
 }, 'clients')
+
+// 4. Regras de Follow-ups (Followups)
+// Qualquer usuário autenticado cria; autor ou Administrador pode editar/excluir
+onRecordCreateRequest((e) => {
+  const auth = e.auth
+  if (!auth) {
+    throw new ForbiddenError('Acesso não autorizado. Faça login para registrar follow-up.')
+  }
+  // Garante que o author seja o usuário autenticado caso não tenha sido preenchido
+  if (!e.record.get('author')) {
+    e.record.set('author', auth.id)
+  }
+  if (!e.record.get('author_name')) {
+    e.record.set('author_name', auth.get('name') || 'Colaborador')
+  }
+  e.next()
+}, 'followups')
+
+onRecordUpdateRequest((e) => {
+  const auth = e.auth
+  if (!auth) {
+    throw new ForbiddenError('Acesso não autorizado.')
+  }
+  const role = auth.get('role')
+  const isAdmin = role === 'Administrador'
+  if (isAdmin) {
+    return e.next()
+  }
+
+  const author = e.record.get('author')
+  if (author !== auth.id) {
+    throw new ForbiddenError('Você só pode editar registros de follow-up criados por você.')
+  }
+  e.next()
+}, 'followups')
+
+onRecordDeleteRequest((e) => {
+  const auth = e.auth
+  if (!auth) {
+    throw new ForbiddenError('Acesso não autorizado.')
+  }
+  const role = auth.get('role')
+  const isAdmin = role === 'Administrador'
+  if (isAdmin) {
+    return e.next()
+  }
+
+  const author = e.record.get('author')
+  if (author !== auth.id) {
+    throw new ForbiddenError('Você só pode excluir registros de follow-up criados por você.')
+  }
+  e.next()
+}, 'followups')

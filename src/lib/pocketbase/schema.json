@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-18T13:26:23.975Z",
+  "generatedAt": "2026-09-21T09:46:47.486Z",
   "collections": [
     {
       "name": "users",
@@ -735,6 +735,77 @@
       "indexes": [
         "CREATE INDEX idx_notifications_user ON notifications (user, created DESC)",
         "CREATE INDEX idx_notifications_read ON notifications (user, read)"
+      ]
+    },
+    {
+      "name": "followups",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.id != \"\"",
+        "update": "@request.auth.role = \"Administrador\" || author = @request.auth.id",
+        "delete": "@request.auth.role = \"Administrador\" || author = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "quote",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "quotes"
+        },
+        {
+          "name": "contact_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "contact_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Ligação", "WhatsApp", "E-mail", "Reunião", "Outros"]
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "author",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "author_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_followups_quote ON followups (quote)",
+        "CREATE INDEX idx_followups_contact_date ON followups (contact_date DESC)",
+        "CREATE INDEX idx_followups_author ON followups (author)"
       ]
     }
   ]

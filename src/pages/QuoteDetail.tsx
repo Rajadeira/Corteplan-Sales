@@ -12,13 +12,17 @@ import {
   Sparkles,
   PackageCheck,
   ExternalLink,
+  PhoneCall,
+  AlertCircle,
 } from 'lucide-react'
 import { quoteService } from '@/services/quotes'
 import { orderService } from '@/services/orders'
+import { followupService, getFollowupStatus } from '@/services/followups'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
   QuoteRecord,
   QuoteStatus,
+  FollowupRecord,
   ProposalLayoutConfig,
   ProposalBlockId,
   BlockStyleConfig,
@@ -56,6 +60,7 @@ export default function QuoteDetail() {
   const { user } = useAuth()
 
   const [quote, setQuote] = useState<QuoteRecord | null>(null)
+  const [followups, setFollowups] = useState<FollowupRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [statusLoading, setStatusLoading] = useState(false)
   const [generatingOrder, setGeneratingOrder] = useState(false)
@@ -76,8 +81,12 @@ export default function QuoteDetail() {
   const loadQuote = async () => {
     if (!id) return
     try {
-      const data = await quoteService.getById(id)
+      const [data, followupsList] = await Promise.all([
+        quoteService.getById(id),
+        followupService.getByQuote(id).catch(() => []),
+      ])
       setQuote(data)
+      setFollowups(followupsList)
       if (data.layout_config && typeof data.layout_config === 'object') {
         setLayoutConfig({
           version: data.layout_config.version || 1,
@@ -485,6 +494,21 @@ export default function QuoteDetail() {
                 onSaveLayout={handleSaveLayout}
                 saving={savingLayout}
               />
+
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/orcamentos/${quote.id}/followup`)}
+                className="rounded-xl border-orange-200 bg-orange-50/70 text-[#E66812] hover:bg-[#F08A24] hover:text-white font-semibold transition-colors"
+                title="Acompanhar contatos e retornos desta proposta"
+              >
+                <PhoneCall className="h-4 w-4 mr-1.5" />
+                Follow-up
+                {followups.length > 0 && (
+                  <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-white text-[#E66812] text-[10px] font-mono font-bold">
+                    {followups.length}
+                  </span>
+                )}
+              </Button>
 
               <Button
                 variant="outline"

@@ -352,6 +352,7 @@ export default function Layout() {
     if (path.startsWith('/clientes/')) return 'Detalhes do Cliente'
     if (path === '/orcamentos') return 'Orçamentos'
     if (path === '/orcamentos/novo') return 'Novo Orçamento'
+    if (path.includes('/followup')) return 'Follow-up do Orçamento'
     if (path.includes('/editar')) return 'Editar Orçamento'
     if (path.startsWith('/orcamentos/')) return 'Detalhes do Orçamento'
     if (path === '/pedidos') return 'Pedidos'

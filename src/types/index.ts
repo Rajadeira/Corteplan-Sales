@@ -162,6 +162,24 @@ export interface QuoteRecord extends RecordModel {
   }
 }
 
+export type FollowupContactType = 'Ligação' | 'WhatsApp' | 'E-mail' | 'Reunião' | 'Outros'
+
+export interface FollowupRecord extends RecordModel {
+  quote: string
+  contact_date: string // ISO ou YYYY-MM-DDTHH:mm
+  contact_type: FollowupContactType
+  notes: string
+  author: string
+  author_name?: string
+  created: string
+  updated: string
+  expand?: {
+    quote?: QuoteRecord
+    author?: AppUserRecord
+    [key: string]: unknown
+  }
+}
+
 export interface NotificationRecord extends RecordModel {
   user: string
   type?: string

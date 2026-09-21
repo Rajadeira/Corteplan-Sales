@@ -24,9 +24,11 @@ import { clientService } from '@/services/clients'
 import { quoteService } from '@/services/quotes'
 import { orderService } from '@/services/orders'
 import { userService } from '@/services/users'
+import { followupService, getFollowupStatus } from '@/services/followups'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { ClientRecord, QuoteRecord, OrderRecord, AppUserRecord } from '@/types'
+import type { ClientRecord, QuoteRecord, OrderRecord, AppUserRecord, FollowupRecord } from '@/types'
+import { PhoneForwarded, PhoneCall, AlertCircle, Clock } from 'lucide-react'
 import { formatCurrencyBRL, formatQuoteNumber, calculateCommission } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -42,20 +44,23 @@ export default function Index() {
   const [quotes, setQuotes] = useState<QuoteRecord[]>([])
   const [orders, setOrders] = useState<OrderRecord[]>([])
   const [usersList, setUsersList] = useState<AppUserRecord[]>([])
+  const [allFollowups, setAllFollowups] = useState<FollowupRecord[]>([])
   const [loading, setLoading] = useState(true)
 
   const loadData = async () => {
     try {
-      const [allClients, allQuotes, allOrders, allUsers] = await Promise.all([
+      const [allClients, allQuotes, allOrders, allUsers, followupsList] = await Promise.all([
         clientService.getAll(),
         quoteService.getAll(),
         orderService.getAll().catch(() => []),
         userService.getAll().catch(() => []),
+        followupService.getAll().catch(() => []),
       ])
       setClients(allClients)
       setQuotes(allQuotes)
       setOrders(allOrders)
       setUsersList(allUsers)
+      setAllFollowups(followupsList)
     } catch (err) {
       console.error('Erro ao carregar dados do Dashboard:', err)
     } finally {
@@ -79,6 +84,58 @@ export default function Index() {
   useRealtime<OrderRecord>('orders', () => {
     loadData()
   })
+
+  useRealtime<FollowupRecord>('followups', () => {
+    followupService
+      .getAll()
+      .then(setAllFollowups)
+      .catch(() => {})
+  })
+
+  // Agrupamento de follow-ups por quoteId
+  const followupsByQuoteId = React.useMemo(() => {
+    const map = new Map<string, FollowupRecord[]>()
+    for (const f of allFollowups) {
+      const qId = f.quote
+      if (!map.has(qId)) {
+        map.set(qId, [])
+      }
+      map.get(qId)!.push(f)
+    }
+    return map
+  }, [allFollowups])
+
+  // Lista de propostas pendentes de retorno (status Enviado/Aprovado há > 2 dias sem follow-up recente)
+  // Respeita privacidade comercial: vendedor vê somente suas propostas; administrador vê todas
+  const pendingFollowups = React.useMemo(() => {
+    return quotes
+      .filter((q) => {
+        // Filtro de vendedor vs admin
+        if (!isAdmin) {
+          const sellerUser = q.seller_user
+          const sellerName = (q.seller || '').toLowerCase()
+          const userName = (user?.name || '').toLowerCase()
+          const isOwner =
+            (sellerUser && sellerUser === user?.id) ||
+            (!sellerUser && userName && sellerName.includes(userName))
+          if (!isOwner) return false
+        }
+
+        const qFollowups = followupsByQuoteId.get(q.id) || []
+        const fStatus = getFollowupStatus(q, qFollowups)
+        return fStatus.isPendingReturn
+      })
+      .map((q) => {
+        const qFollowups = followupsByQuoteId.get(q.id) || []
+        const fStatus = getFollowupStatus(q, qFollowups)
+        return {
+          quote: q,
+          status: fStatus,
+          totalFollowups: qFollowups.length,
+        }
+      })
+      .sort((a, b) => b.status.daysElapsed - a.status.daysElapsed)
+  }, [quotes, followupsByQuoteId, isAdmin, user])
 
   // Cálculos dos KPIs
   const totalClients = clients.length
@@ -548,6 +605,93 @@ export default function Index() {
           </div>
         </CardContent>
       </Card>
+
+      {/* CARD DE AVISO: Propostas Pendentes de Retorno (Regra de Negócio de Follow-up) */}
+      {pendingFollowups.length > 0 && (
+        <Card className="rounded-2xl border-2 border-[#F08A24] bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-white shadow-md overflow-hidden animate-in fade-in-50 duration-200">
+          <div className="p-5 border-b border-amber-200/80 bg-amber-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-[#F08A24] text-white flex items-center justify-center shrink-0 shadow-sm">
+                <PhoneForwarded className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base font-bold text-amber-950">
+                    Propostas Pendentes de Retorno ({pendingFollowups.length})
+                  </h3>
+                  <Badge className="bg-[#E66812] text-white text-[10px] font-bold px-2 py-0.5">
+                    Ação recomendada
+                  </Badge>
+                </div>
+                <p className="text-xs text-amber-900/80 mt-0.5">
+                  Orçamentos enviados há mais de 2 dias sem contato recente do cliente. Ligue para
+                  saber o que ele achou da proposta!
+                </p>
+              </div>
+            </div>
+
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="rounded-xl border-amber-300 bg-white hover:bg-amber-100 text-amber-950 text-xs font-semibold shrink-0"
+            >
+              <Link to="/orcamentos">Ver todos os orçamentos &rarr;</Link>
+            </Button>
+          </div>
+
+          <CardContent className="p-4 sm:p-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {pendingFollowups.slice(0, 6).map(({ quote: q, status: s, totalFollowups }) => (
+                <div
+                  key={q.id}
+                  className="bg-white rounded-xl p-3.5 border border-amber-200 hover:border-amber-400 hover:shadow-xs transition-all space-y-2 flex flex-col justify-between"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-bold text-xs bg-slate-100 text-[#3A3A3C] px-2 py-0.5 rounded-md border border-slate-200">
+                        {formatQuoteNumber(q.quote_number)}
+                      </span>
+                      <span className="text-[10px] font-bold text-[#E66812] bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Há {s.daysElapsed} dias
+                      </span>
+                    </div>
+
+                    <div className="font-bold text-xs sm:text-sm text-slate-900 truncate pt-0.5">
+                      {q.expand?.client?.name || 'Cliente'}
+                    </div>
+
+                    <p className="text-[11px] text-slate-500 truncate">
+                      Vendedor: {q.seller || q.expand?.seller_user?.name || 'Vendedor'} &bull;{' '}
+                      {canViewValues(q, user) ? formatCurrencyBRL(q.total) : 'Confidencial'}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                    <span className="text-[11px] text-slate-400">
+                      {totalFollowups > 0
+                        ? `${totalFollowups} contato(s) registrado(s)`
+                        : 'Nenhum contato ainda'}
+                    </span>
+
+                    <Button
+                      asChild
+                      size="sm"
+                      className="h-7 px-2.5 text-xs font-semibold bg-[#E66812] hover:bg-[#F08A24] text-white rounded-lg shadow-2xs"
+                    >
+                      <Link to={`/orcamentos/${q.id}/followup`}>
+                        <PhoneCall className="h-3 w-3 mr-1" />
+                        Follow-up
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 4 Cards de Resumo (KPIs) com microinteração de elevação */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">

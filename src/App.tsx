@@ -9,12 +9,13 @@ import Layout from '@/components/Layout'
 
 import Index from './pages/Index'
 import Login from './pages/Login'
-import Register from './pages/Register'
+import { Navigate } from 'react-router-dom'
 import Clients from './pages/Clients'
 import ClientDetail from './pages/ClientDetail'
 import Quotes from './pages/Quotes'
 import QuoteDetail from './pages/QuoteDetail'
 import QuoteForm from './pages/QuoteForm'
+import QuoteFollowup from './pages/QuoteFollowup'
 import Orders from './pages/Orders'
 import OrderDetail from './pages/OrderDetail'
 import Users from './pages/Users'
@@ -30,7 +31,7 @@ const App = () => (
         <Routes>
           {/* Rotas Públicas */}
           <Route path="/login" element={<Login />} />
-          <Route path="/cadastro" element={<Register />} />
+          <Route path="/cadastro" element={<Navigate to="/login" replace />} />
 
           {/* Rotas Protegidas sob o Layout Principal */}
           <Route
@@ -47,6 +48,7 @@ const App = () => (
             <Route path="/orcamentos/novo" element={<QuoteForm />} />
             <Route path="/orcamentos/:id" element={<QuoteDetail />} />
             <Route path="/orcamentos/:id/editar" element={<QuoteForm />} />
+            <Route path="/orcamentos/:id/followup" element={<QuoteFollowup />} />
             <Route path="/pedidos" element={<Orders />} />
             <Route path="/pedidos/:id" element={<OrderDetail />} />
             <Route path="/itens" element={<Items />} />
