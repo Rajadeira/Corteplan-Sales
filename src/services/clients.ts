@@ -39,6 +39,33 @@ export const clientService = {
     return pb.collection('clients').update<ClientRecord>(id, data)
   },
 
+  /**
+   * Verifica se o cliente possui vínculos em orçamentos ou pedidos
+   */
+  async checkClientDependencies(
+    clientId: string,
+  ): Promise<{ quotesCount: number; ordersCount: number }> {
+    try {
+      const [quotesRes, ordersRes] = await Promise.all([
+        pb.collection('quotes').getList(1, 1, {
+          filter: `client = '${clientId}'`,
+          fields: 'id',
+        }),
+        pb.collection('orders').getList(1, 1, {
+          filter: `client = '${clientId}'`,
+          fields: 'id',
+        }),
+      ])
+      return {
+        quotesCount: quotesRes.totalItems,
+        ordersCount: ordersRes.totalItems,
+      }
+    } catch (err) {
+      console.warn('Erro ao verificar dependências do cliente:', err)
+      return { quotesCount: 0, ordersCount: 0 }
+    }
+  },
+
   async delete(id: string): Promise<boolean> {
     return pb.collection('clients').delete(id)
   },
