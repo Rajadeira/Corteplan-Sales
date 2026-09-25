@@ -65,25 +65,26 @@ onRecordDelete((e) => {
   // 2. Se for o orçamento original (currentRevision === 0), promover a revisão mais antiga
   if (currentRevision === 0) {
     // Buscar revisões existentes com o mesmo quote_number e id != quoteId ordenadas por revision ASC
+    // Usamos $app.findRecordsByFilter para buscar com segurança os registros no runtime goja do PocketBase
     try {
-      const rows = []
-      $app
-        .db()
-        .newQuery(
-          'SELECT id, revision FROM quotes WHERE quote_number = {:qnum} AND id != {:qid} AND revision > 0 ORDER BY revision ASC',
-        )
-        .bind({ qnum: quoteNumber, qid: quoteId })
-        .all(rows)
+      const remainingRevs = $app.findRecordsByFilter(
+        'quotes',
+        `quote_number = ${quoteNumber} && id != '${quoteId}' && revision > 0`,
+        'revision',
+        100,
+        0,
+      )
 
-      if (rows && rows.length > 0) {
+      if (remainingRevs && remainingRevs.length > 0) {
         // A primeira revisão (menor revision, ex: 1 = Rev01) será a nova original
-        const promotedId = rows[0].id
+        const promotedRecord = remainingRevs[0]
+        const promotedId = promotedRecord.id
 
         // Para evitar violação do índice único (quote_number, revision) enquanto o registro atual ainda existe
         // na transação do PB, usamos offsets temporários altos negativos ou 10000+
         // Passo A: Mover todas as revisões restantes para valores temporários
-        for (let i = 0; i < rows.length; i++) {
-          const rId = rows[i].id
+        for (let i = 0; i < remainingRevs.length; i++) {
+          const rId = remainingRevs[i].id
           const tempRev = 10000 + i
           $app
             .db()
@@ -100,8 +101,8 @@ onRecordDelete((e) => {
           .execute()
 
         // Passo C: As demais revisões decrementam 1 e têm parent_quote apontando para a promovida
-        for (let i = 1; i < rows.length; i++) {
-          const rId = rows[i].id
+        for (let i = 1; i < remainingRevs.length; i++) {
+          const rId = remainingRevs[i].id
           const newRev = i // ou seja, o 2º item (índice 1) vira revision 1 (Rev01), o 3º vira revision 2 (Rev02)
           $app
             .db()
