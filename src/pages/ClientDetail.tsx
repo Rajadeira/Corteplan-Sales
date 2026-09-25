@@ -367,7 +367,7 @@ export default function ClientDetail() {
                   <div className="space-y-1 min-w-0 pr-4">
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-bold text-sm text-[#3A3A3C] group-hover:text-[#F08A24]">
-                        {formatQuoteNumber(q.quote_number)}
+                        {formatQuoteNumber(q.quote_number, q.revision)}
                       </span>
                       {getStatusBadge(q.status)}
                     </div>

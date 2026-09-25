@@ -428,7 +428,7 @@ export default function Orders() {
                           >
                             <span>Origem:</span>
                             <span className="font-mono font-semibold">
-                              {formatQuoteNumber(order.quote_number)}
+                              {formatQuoteNumber(order.quote_number, order.quote_revision)}
                             </span>
                           </Link>
                         )}
@@ -561,7 +561,7 @@ export default function Orders() {
                     )}
                     {order.quote_number && (
                       <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                        Origem: {formatQuoteNumber(order.quote_number)}
+                        Origem: {formatQuoteNumber(order.quote_number, order.quote_revision)}
                       </p>
                     )}
                   </div>

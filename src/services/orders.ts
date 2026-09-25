@@ -7,8 +7,10 @@ export interface CreateOrderData {
   client: string
   quote?: string
   quote_number?: number
+  quote_revision?: number
   items: import('@/types').QuoteItem[]
   discount_percent: number
+  discount_value?: number
   subtotal: number
   total: number
   status: OrderStatus
@@ -185,8 +187,10 @@ export const orderService = {
       client: quote.client,
       quote: quote.id,
       quote_number: quote.quote_number,
+      quote_revision: quote.revision || 0,
       items: quote.items || [],
       discount_percent: quote.discount_percent || 0,
+      discount_value: quote.discount_value || 0,
       subtotal: quote.subtotal || 0,
       total: quote.total || 0,
       status: 'Aberto',

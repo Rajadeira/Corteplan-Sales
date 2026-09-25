@@ -188,9 +188,12 @@ export interface StatusHistoryEntry {
 
 export interface QuoteRecord extends RecordModel {
   quote_number: number
+  revision?: number // 0 = original, 1 = Rev01, 2 = Rev02...
+  parent_quote?: string // id do orçamento original / anterior
   client: string
   items: QuoteItem[]
   discount_percent: number
+  discount_value?: number // valor em R$ do desconto concedido
   subtotal: number
   total: number
   status: QuoteStatus
@@ -218,6 +221,7 @@ export interface QuoteRecord extends RecordModel {
   expand?: {
     client?: ClientRecord
     seller_user?: AppUserRecord
+    parent_quote?: QuoteRecord
     [key: string]: unknown
   }
 }
@@ -261,8 +265,10 @@ export interface OrderRecord extends RecordModel {
   client: string
   quote?: string
   quote_number?: number
+  quote_revision?: number
   items: QuoteItem[]
   discount_percent: number
+  discount_value?: number
   subtotal: number
   total: number
   status: OrderStatus
@@ -377,8 +383,20 @@ export function formatCurrencyBRL(value: number): string {
   }).format(value || 0)
 }
 
-export function formatQuoteNumber(num: number): string {
-  return `ORÇ-${String(num || 0).padStart(3, '0')}`
+export function formatRevisionSuffix(rev?: number): string {
+  if (!rev || rev <= 0) return ''
+  return `Rev${String(rev).padStart(2, '0')}`
+}
+
+export function formatQuoteNumber(num: number, revision?: number): string {
+  const base = `ORÇ-${String(num || 0).padStart(3, '0')}`
+  const rev = formatRevisionSuffix(revision)
+  return rev ? `${base} · ${rev}` : base
+}
+
+export function formatQuoteProposalTitle(num: number, revision?: number): string {
+  const rev = formatRevisionSuffix(revision)
+  return rev ? `Proposta Nº ${num} - ${rev}` : `Proposta Nº ${num}`
 }
 
 export function formatOrderNumber(num: number): string {
@@ -414,6 +432,7 @@ export function calculateCommission(
   }
 
   // Desconto proporcional aplicado apenas sobre as linhas comissionáveis
+  // Se o desconto tiver percentual informado: usa a taxa direta
   const discountRate = Math.max(0, Math.min(100, Number(discountPercent) || 0)) / 100
   const commissionBase = Math.max(0, comissionableSubtotal * (1 - discountRate))
 

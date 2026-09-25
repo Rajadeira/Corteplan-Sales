@@ -341,7 +341,7 @@ export default function OrderDetail() {
                   to={`/orcamentos/${order.quote || ''}`}
                   className="font-mono text-[#F08A24] hover:underline font-semibold"
                 >
-                  {formatQuoteNumber(order.quote_number)}
+                  {formatQuoteNumber(order.quote_number, order.quote_revision)}
                 </Link>
               </span>
             )}
@@ -748,6 +748,7 @@ export default function OrderDetail() {
                     </div>
 
                     {/* Bloco de Totais (Sem comissão impressa) */}
+                    {/* Regra de layout: Produtos -> Desconto -> Impostos -> Total */}
                     <div className="md:col-span-5 bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-1.5 text-xs">
                       <div className="flex justify-between items-center text-slate-700">
                         <span>Produtos:</span>
@@ -755,6 +756,30 @@ export default function OrderDetail() {
                           {formatCurrencyBRL(produtosTotal)}
                         </span>
                       </div>
+
+                      {/* Linha "Desconto" entre Produtos e Impostos */}
+                      {(() => {
+                        const discountVal =
+                          order.discount_value !== undefined && order.discount_value > 0
+                            ? order.discount_value
+                            : order.discount_percent > 0
+                              ? (produtosTotal * order.discount_percent) / 100
+                              : 0
+
+                        if (discountVal <= 0) return null
+
+                        return (
+                          <div className="flex justify-between items-center text-emerald-700 text-[11px] font-medium">
+                            <span>
+                              Desconto
+                              {order.discount_percent > 0 ? ` (${order.discount_percent}%)` : ''}:
+                            </span>
+                            <span className="font-mono font-semibold">
+                              - {formatCurrencyBRL(discountVal)}
+                            </span>
+                          </div>
+                        )
+                      })()}
 
                       {hasTaxBreakdown ? (
                         <>
@@ -776,15 +801,6 @@ export default function OrderDetail() {
                           </div>
                         </>
                       ) : null}
-
-                      {order.discount_percent > 0 && (
-                        <div className="flex justify-between items-center text-emerald-700 text-[11px]">
-                          <span>Desconto ({order.discount_percent}%):</span>
-                          <span className="font-mono">
-                            - {formatCurrencyBRL((produtosTotal * order.discount_percent) / 100)}
-                          </span>
-                        </div>
-                      )}
 
                       <div className="pt-2 border-t-2 border-slate-900 flex justify-between items-center">
                         <span className="font-extrabold text-slate-900 text-sm uppercase">

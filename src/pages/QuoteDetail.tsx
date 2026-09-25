@@ -45,6 +45,8 @@ import {
   formatDateExtendedBR,
   formatOrderNumber,
   formatQuoteNumber,
+  formatRevisionSuffix,
+  formatQuoteProposalTitle,
   maskPhoneBR,
   calculateCommission,
   CORTEPLAN_COMPANY_INFO,
@@ -60,6 +62,7 @@ export default function QuoteDetail() {
   const { user } = useAuth()
 
   const [quote, setQuote] = useState<QuoteRecord | null>(null)
+  const [allRevisions, setAllRevisions] = useState<QuoteRecord[]>([])
   const [followups, setFollowups] = useState<FollowupRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [statusLoading, setStatusLoading] = useState(false)
@@ -87,6 +90,15 @@ export default function QuoteDetail() {
       ])
       setQuote(data)
       setFollowups(followupsList)
+
+      if (data.quote_number) {
+        try {
+          const revs = await quoteService.getRevisionsByQuoteNumber(data.quote_number)
+          setAllRevisions(revs)
+        } catch {
+          /* intentionally ignored */
+        }
+      }
       if (data.layout_config && typeof data.layout_config === 'object') {
         setLayoutConfig({
           version: data.layout_config.version || 1,
@@ -432,10 +444,15 @@ export default function QuoteDetail() {
       {/* Header da Página no App (Escondido na impressão) */}
       <div className="print:hidden bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="font-mono text-2xl font-bold text-[#3A3A3C] tracking-tight">
-              Proposta Nº {quote.quote_number}
+              {formatQuoteNumber(quote.quote_number, quote.revision)}
             </span>
+            {quote.revision && quote.revision > 0 ? (
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                {formatRevisionSuffix(quote.revision)}
+              </span>
+            ) : null}
             {getStatusBadge(quote.status)}
             {quote.order_number && (
               <Link
@@ -458,6 +475,39 @@ export default function QuoteDetail() {
               </span>
             )}
           </p>
+
+          {/* Histórico / Navegação entre revisões */}
+          {allRevisions.length > 1 && (
+            <div className="pt-2 flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                Versões:
+              </span>
+              {allRevisions.map((rev) => {
+                const isCurrent = rev.id === quote.id
+                const revLabel =
+                  !rev.revision || rev.revision === 0
+                    ? 'Original'
+                    : `Rev${String(rev.revision).padStart(2, '0')}`
+
+                return (
+                  <button
+                    key={rev.id}
+                    type="button"
+                    onClick={() => navigate(`/orcamentos/${rev.id}`)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all border ${
+                      isCurrent
+                        ? 'bg-[#3A3A3C] text-white border-[#3A3A3C] shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
+                    }`}
+                    title={`Ver versão ${revLabel} (${rev.status})`}
+                  >
+                    {revLabel}
+                    <span className="ml-1 text-[10px] font-normal opacity-80">({rev.status})</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 self-start md:self-auto shrink-0 flex-wrap">
@@ -747,7 +797,7 @@ export default function QuoteDetail() {
                     <div className="pt-1 pb-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100">
                       <div>
                         <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                          Proposta Nº {quote.quote_number}
+                          {formatQuoteProposalTitle(quote.quote_number, quote.revision)}
                         </h2>
                       </div>
                       <div className="text-left sm:text-right">
@@ -926,6 +976,7 @@ export default function QuoteDetail() {
                       </div>
 
                       {/* Bloco de Totais (Lado Direito - 5 colunas) */}
+                      {/* Regra de layout impressa: Produtos -> Desconto -> Impostos -> Total */}
                       <div className="md:col-span-5 bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-1.5 text-xs">
                         <div className="flex justify-between items-center text-slate-700">
                           <span>Produtos:</span>
@@ -933,6 +984,30 @@ export default function QuoteDetail() {
                             {formatCurrencyBRL(produtosTotal)}
                           </span>
                         </div>
+
+                        {/* Linha "Desconto" entre "Produtos" e os impostos, conforme solicitado */}
+                        {(() => {
+                          const discountVal =
+                            quote.discount_value !== undefined && quote.discount_value > 0
+                              ? quote.discount_value
+                              : quote.discount_percent > 0
+                                ? (produtosTotal * quote.discount_percent) / 100
+                                : 0
+
+                          if (discountVal <= 0) return null
+
+                          return (
+                            <div className="flex justify-between items-center text-emerald-700 text-[11px] font-medium">
+                              <span>
+                                Desconto
+                                {quote.discount_percent > 0 ? ` (${quote.discount_percent}%)` : ''}:
+                              </span>
+                              <span className="font-mono font-semibold">
+                                - {formatCurrencyBRL(discountVal)}
+                              </span>
+                            </div>
+                          )
+                        })()}
 
                         {hasTaxBreakdown ? (
                           <>
@@ -954,15 +1029,6 @@ export default function QuoteDetail() {
                             </div>
                           </>
                         ) : null}
-
-                        {quote.discount_percent > 0 && (
-                          <div className="flex justify-between items-center text-emerald-700 text-[11px]">
-                            <span>Desconto ({quote.discount_percent}%):</span>
-                            <span className="font-mono">
-                              - {formatCurrencyBRL((produtosTotal * quote.discount_percent) / 100)}
-                            </span>
-                          </div>
-                        )}
 
                         <div className="pt-2 border-t-2 border-slate-900 flex justify-between items-center">
                           <span className="font-extrabold text-slate-900 text-sm uppercase">

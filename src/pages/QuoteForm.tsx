@@ -99,8 +99,14 @@ export default function QuoteForm() {
     },
   ])
 
-  // Desconto e Observações
+  // Desconto (percentual e valor em R$) e modo de desconto
   const [discountPercent, setDiscountPercent] = useState<number>(0)
+  const [discountValue, setDiscountValue] = useState<number>(0)
+  const [discountMode, setDiscountMode] = useState<'percent' | 'value'>('percent')
+
+  // Revisão atual se for edição
+  const [quoteRevision, setQuoteRevision] = useState<number>(0)
+
   const DEFAULT_OBSERVATIONS = `Prazo de entrega: 35 dias úteis
 Pagamento: 50% Sinal, saldo em 30 dias após emissão da NF-e, conforme análise cadastral.
 Este orçamento contempla exclusivamente os itens, quantidades, materiais, acabamentos e especificações técnicas descritos na proposta.
@@ -181,7 +187,8 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
           }
           setExistingQuote(q)
           setQuoteNumber(q.quote_number)
-          setFormattedNumber(formatQuoteNumber(q.quote_number))
+          setQuoteRevision(q.revision || 0)
+          setFormattedNumber(formatQuoteNumber(q.quote_number, q.revision))
           setSelectedClientId(q.client)
           setItems(
             q.items && q.items.length > 0
@@ -197,7 +204,19 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                   },
                 ],
           )
-          setDiscountPercent(q.discount_percent || 0)
+
+          const qSubtotal = q.subtotal || 0
+          const qDiscPercent = q.discount_percent || 0
+          const qDiscVal =
+            q.discount_value !== undefined && q.discount_value > 0
+              ? q.discount_value
+              : qSubtotal > 0 && qDiscPercent > 0
+                ? Math.round(((qSubtotal * qDiscPercent) / 100) * 100) / 100
+                : 0
+
+          setDiscountPercent(qDiscPercent)
+          setDiscountValue(qDiscVal)
+          setDiscountMode(q.discount_value && !q.discount_percent ? 'value' : 'percent')
           setObservations(q.observations || '')
 
           setSeller(q.seller || user?.name || 'Gustavo')
@@ -296,8 +315,20 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
     return sum + qty * price
   }, 0)
 
-  // Quando o subtotal ou os percentuais mudam e estamos em modo 'percent',
-  // recalcula os valores de impostos automaticamente com base na regra pré-estipulada
+  // Sincronização inteligente de desconto quando subtotal muda ou quando o usuário digita
+  const effectiveDiscountAmount =
+    discountMode === 'percent'
+      ? Math.round(((subtotal * (Number(discountPercent) || 0)) / 100) * 100) / 100
+      : Math.min(subtotal, Math.max(0, Number(discountValue) || 0))
+
+  const effectiveDiscountPercent =
+    discountMode === 'percent'
+      ? Number(discountPercent) || 0
+      : subtotal > 0
+        ? Math.round(((Number(discountValue) || 0) / subtotal) * 10000) / 100
+        : 0
+
+  // Recalcular impostos quando subtotal muda (impostos calculados sobre o subtotal)
   useEffect(() => {
     if (taxMode === 'percent') {
       const calcIcms = Math.round(((subtotal * (Number(icmsPercent) || 0)) / 100) * 100) / 100
@@ -312,18 +343,20 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
     }
   }, [subtotal, icmsPercent, ipiPercent, pisPercent, cofinsPercent, taxMode])
 
-  const discountAmount = (subtotal * (Number(discountPercent) || 0)) / 100
   const taxesTotal =
     (Number(icms) || 0) + (Number(ipi) || 0) + (Number(pis) || 0) + (Number(cofins) || 0)
   // Total da proposta: se houver impostos discriminados, soma ao subtotal líquido; caso contrário subtotal - desconto
-  const total = Math.max(0, subtotal - discountAmount + taxesTotal)
+  const total = Math.max(
+    0,
+    Math.round((subtotal - effectiveDiscountAmount + taxesTotal) * 100) / 100,
+  )
 
   // Cálculo de comissão em tempo real com regra restrita da Corteplan:
   // "A base de cálculo é o valor dos PRODUTOS... EXCETUANDO: o valor correspondente aos impostos e qualquer item cuja categoria seja 'Frete' ou 'Instalação'.
   // Comissão = (soma das linhas comissionáveis, com desconto proporcional aplicado) x percentual de comissão"
   const { commissionBase, commissionAmount } = calculateCommission(
     items,
-    discountPercent,
+    effectiveDiscountPercent,
     commissionPercent,
   )
 
@@ -648,7 +681,8 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
       const quotePayload = {
         client: selectedClientId,
         items: cleanItems,
-        discount_percent: Number(discountPercent) || 0,
+        discount_percent: Math.round(effectiveDiscountPercent * 100) / 100,
+        discount_value: Math.round(effectiveDiscountAmount * 100) / 100,
         subtotal: Math.round(subtotal * 100) / 100,
         total: Math.round(total * 100) / 100,
         observations: observations.trim() || undefined,
@@ -665,27 +699,47 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
         installments: cleanInstallments,
       }
 
-      if (isEditing && id) {
-        const updatedStatus =
-          existingQuote?.status === 'Rascunho' && targetStatus === 'Enviado'
-            ? 'Enviado'
-            : existingQuote?.status || targetStatus
+      if (isEditing && id && existingQuote) {
+        // Regra de Versionamento:
+        // Se o orçamento original já foi enviado/aprovado/rejeitado (não é mais 'Rascunho'),
+        // a edição cria uma NOVA VERSÃO (Rev01, Rev02...) com parent_quote e reusa o número
+        const isNotDraft = existingQuote.status !== 'Rascunho'
 
-        const updated = await quoteService.update(id, {
-          ...quotePayload,
-          status: updatedStatus,
-        })
+        if (isNotDraft) {
+          const newRevision = await quoteService.createRevision(
+            existingQuote.id,
+            {
+              ...quotePayload,
+              status: targetStatus,
+            },
+            userName,
+          )
 
-        // Exportação automática de itens criados/usados no orçamento para o menu de produtos
-        await itemService.exportItemsFromQuote(cleanItems, user?.id)
+          // Exportação de itens para o catálogo
+          await itemService.exportItemsFromQuote(cleanItems, user?.id)
 
-        toast.success('Orçamento CORTEPLAN atualizado com sucesso!')
-        navigate(`/orcamentos/${updated.id}`)
+          const revLabel = `Rev${String(newRevision.revision || 1).padStart(2, '0')}`
+          toast.success(
+            `Nova versão criada com sucesso: ${formatQuoteNumber(newRevision.quote_number, newRevision.revision)}!`,
+          )
+          navigate(`/orcamentos/${newRevision.id}`)
+        } else {
+          // Se for rascunho, edição direta no próprio registro (sem criar versão)
+          const updated = await quoteService.update(id, {
+            ...quotePayload,
+            status: targetStatus,
+          })
+
+          await itemService.exportItemsFromQuote(cleanItems, user?.id)
+          toast.success('Orçamento CORTEPLAN atualizado com sucesso!')
+          navigate(`/orcamentos/${updated.id}`)
+        }
       } else {
         const created = await quoteService.create(
           {
             ...quotePayload,
             quote_number: quoteNumber,
+            revision: 0,
             status: targetStatus,
           },
           userName,
@@ -776,9 +830,22 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             {isEditing ? 'Edição de Proposta' : 'Nova Proposta Comercial'} &bull; Modelo CORTEPLAN
           </span>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            {isEditing ? `Editar Proposta Nº ${quoteNumber}` : 'Elaboração de Proposta Comercial'}
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2 flex-wrap">
+            <span>
+              {isEditing ? `Editar Proposta Nº ${quoteNumber}` : 'Elaboração de Proposta Comercial'}
+            </span>
+            {isEditing && existingQuote?.status !== 'Rascunho' && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                Gera nova revisão ao salvar
+              </span>
+            )}
           </h1>
+          {isEditing && existingQuote?.status !== 'Rascunho' && (
+            <p className="text-xs text-amber-700 mt-1">
+              Como esta proposta já foi {existingQuote?.status.toLowerCase()}, ao salvar será criada
+              automaticamente a próxima revisão (ex: Rev01, Rev02...) preservando o histórico.
+            </p>
+          )}
         </div>
 
         {/* Número sequencial em destaque */}
@@ -790,6 +857,11 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
             <span className="font-mono text-2xl font-extrabold text-[#3A3A3C]">
               {formattedNumber}
             </span>
+            {isEditing && quoteRevision > 0 && (
+              <span className="block text-xs font-bold text-amber-600 font-mono">
+                Revisão atual: Rev{String(quoteRevision).padStart(2, '0')}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -1309,16 +1381,16 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
             </button>
           </div>
 
-          {/* Seção 3: Detalhamento de Impostos (ICMS 12%, IPI 3,25%, PIS 0,65%, COFINS 3%) */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          {/* Seção 3: Detalhamento de Impostos (ICMS 12%, IPI 3,25%, PIS 0,65%, COFINS 3%) e Bloco de Totais com Desconto */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                  3. Regra de Impostos (ICMS 12%, IPI 3,25%, PIS 0,65%, COFINS 3%)
+                  3. Impostos, Desconto Comercial e Valor Total
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Valores calculados automaticamente sobre o subtotal de produtos (editáveis por
-                  proposta).
+                  Tabela oficial de impostos Corteplan calculada sobre o subtotal, com campo de
+                  desconto integrado.
                 </p>
               </div>
 
@@ -1342,6 +1414,7 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
               </div>
             </div>
 
+            {/* Grid dos 4 Impostos */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* ICMS (12%) */}
               <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
@@ -1496,11 +1569,140 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1">
-              <span>Soma total dos impostos discriminados:</span>
-              <span className="font-mono font-bold text-slate-900">
-                {formatCurrencyBRL(taxesTotal)}
-              </span>
+            {/* Painel Integrado: Campo de Desconto ao lado dos Impostos e Valor Total */}
+            <div className="p-4 rounded-xl bg-slate-100/70 border border-slate-200 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+              {/* Desconto (coluna 1) */}
+              <div className="md:col-span-6 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+                    <span>Desconto Comercial</span>
+                    <span className="text-[10px] text-slate-400 font-normal normal-case">
+                      (aplicado no bloco de totais)
+                    </span>
+                  </Label>
+
+                  {/* Toggle entre % e R$ */}
+                  <div className="inline-flex rounded-lg p-0.5 bg-slate-200 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setDiscountMode('percent')}
+                      className={`px-2 py-0.5 rounded-md font-medium transition-all ${
+                        discountMode === 'percent'
+                          ? 'bg-white text-slate-900 shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      %
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDiscountMode('value')}
+                      className={`px-2 py-0.5 rounded-md font-medium transition-all ${
+                        discountMode === 'value'
+                          ? 'bg-white text-slate-900 shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      R$
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      placeholder="0"
+                      value={
+                        discountMode === 'percent' ? discountPercent : effectiveDiscountPercent
+                      }
+                      disabled={discountMode !== 'percent'}
+                      onChange={(e) => {
+                        const p = parseFloat(e.target.value) || 0
+                        setDiscountPercent(p)
+                        setDiscountValue(Math.round(((subtotal * p) / 100) * 100) / 100)
+                      }}
+                      className={`font-mono text-xs h-9 pr-7 ${
+                        discountMode === 'percent'
+                          ? 'bg-white font-bold'
+                          : 'bg-slate-200/60 text-slate-500'
+                      }`}
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      %
+                    </span>
+                  </div>
+
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min="0"
+                      max={subtotal}
+                      step="0.01"
+                      placeholder="0,00"
+                      value={discountMode === 'value' ? discountValue : effectiveDiscountAmount}
+                      disabled={discountMode !== 'value'}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0
+                        setDiscountValue(val)
+                        const p = subtotal > 0 ? (val / subtotal) * 100 : 0
+                        setDiscountPercent(Math.round(p * 100) / 100)
+                      }}
+                      className={`font-mono text-xs h-9 pl-7 ${
+                        discountMode === 'value'
+                          ? 'bg-white font-bold'
+                          : 'bg-slate-200/60 text-slate-500'
+                      }`}
+                    />
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">
+                      R$
+                    </span>
+                  </div>
+                </div>
+
+                {effectiveDiscountAmount > 0 && (
+                  <div className="text-[11px] text-emerald-700 font-medium flex items-center justify-between">
+                    <span>Desconto aplicado:</span>
+                    <span className="font-mono font-bold">
+                      - {formatCurrencyBRL(effectiveDiscountAmount)} (
+                      {effectiveDiscountPercent.toFixed(2)}%)
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Totais consolidado (coluna 2) */}
+              <div className="md:col-span-6 bg-white p-3 rounded-lg border border-slate-200 space-y-1 text-xs">
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Subtotal dos Produtos:</span>
+                  <span className="font-mono font-semibold text-slate-800">
+                    {formatCurrencyBRL(subtotal)}
+                  </span>
+                </div>
+                {effectiveDiscountAmount > 0 && (
+                  <div className="flex justify-between items-center text-emerald-700">
+                    <span>Desconto ({effectiveDiscountPercent.toFixed(1)}%):</span>
+                    <span className="font-mono font-semibold">
+                      - {formatCurrencyBRL(effectiveDiscountAmount)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Soma dos Impostos:</span>
+                  <span className="font-mono font-semibold text-slate-800">
+                    + {formatCurrencyBRL(taxesTotal)}
+                  </span>
+                </div>
+                <div className="pt-1.5 border-t border-slate-200 flex justify-between items-center">
+                  <span className="font-bold text-slate-900 uppercase">Total da Proposta:</span>
+                  <span className="font-mono text-base font-extrabold text-[#3A3A3C]">
+                    {formatCurrencyBRL(total)}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1867,27 +2069,66 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                 </span>
               </div>
 
-              {/* Campo de Desconto */}
+              {/* Campo de Desconto no Resumo Lateral */}
               <div className="pt-2 border-t border-slate-100 space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="discount" className="text-xs font-semibold text-slate-700">
-                    Desconto (%)
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Desconto {discountMode === 'percent' ? '(%)' : '(R$)'}
                   </Label>
                   <span className="font-mono text-xs text-emerald-600 font-semibold">
-                    - {formatCurrencyBRL(discountAmount)}
+                    - {formatCurrencyBRL(effectiveDiscountAmount)}
                   </span>
                 </div>
-                <Input
-                  id="discount"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={discountPercent}
-                  onChange={(e) => setDiscountPercent(parseFloat(e.target.value) || 0)}
-                  className="font-mono text-xs h-9 bg-slate-50"
-                  placeholder="0"
-                />
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={
+                        discountMode === 'percent' ? discountPercent : effectiveDiscountPercent
+                      }
+                      disabled={discountMode !== 'percent'}
+                      onChange={(e) => {
+                        const p = parseFloat(e.target.value) || 0
+                        setDiscountPercent(p)
+                        setDiscountValue(Math.round(((subtotal * p) / 100) * 100) / 100)
+                      }}
+                      className={`font-mono text-xs h-8 pr-6 ${
+                        discountMode === 'percent' ? 'bg-slate-50' : 'bg-slate-100 text-slate-400'
+                      }`}
+                      placeholder="0%"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">
+                      %
+                    </span>
+                  </div>
+
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min="0"
+                      max={subtotal}
+                      step="0.01"
+                      value={discountMode === 'value' ? discountValue : effectiveDiscountAmount}
+                      disabled={discountMode !== 'value'}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0
+                        setDiscountValue(val)
+                        const p = subtotal > 0 ? (val / subtotal) * 100 : 0
+                        setDiscountPercent(Math.round(p * 100) / 100)
+                      }}
+                      className={`font-mono text-xs h-8 pl-6 ${
+                        discountMode === 'value' ? 'bg-slate-50' : 'bg-slate-100 text-slate-400'
+                      }`}
+                      placeholder="R$ 0"
+                    />
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">
+                      R$
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {/* Discriminativo de Impostos */}
@@ -1961,7 +2202,9 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                 ) : (
                   <>
                     <Send className="mr-2 h-4 w-4 text-amber-400" />
-                    Salvar e Enviar Proposta
+                    {isEditing && existingQuote?.status !== 'Rascunho'
+                      ? `Salvar Nova Versão (${existingQuote ? `Rev${String((existingQuote.revision || 0) + 1).padStart(2, '0')}` : 'Rev01'}) e Enviar`
+                      : 'Salvar e Enviar Proposta'}
                   </>
                 )}
               </Button>
@@ -1974,7 +2217,9 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                 className="w-full h-10 border-slate-200 text-slate-700 hover:bg-slate-50 text-xs sm:text-sm rounded-xl font-medium"
               >
                 <Save className="mr-2 h-4 w-4 text-slate-500" />
-                Salvar como Rascunho
+                {isEditing && existingQuote?.status !== 'Rascunho'
+                  ? `Salvar Nova Versão (${existingQuote ? `Rev${String((existingQuote.revision || 0) + 1).padStart(2, '0')}` : 'Rev01'}) como Rascunho`
+                  : 'Salvar como Rascunho'}
               </Button>
             </div>
           </div>

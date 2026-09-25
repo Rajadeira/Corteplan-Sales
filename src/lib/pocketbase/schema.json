@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-23T22:52:43.618Z",
+  "generatedAt": "2026-09-25T11:51:15.722Z",
   "collections": [
     {
       "name": "users",
@@ -332,12 +332,31 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "revision",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "parent_quote",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "quotes"
+        },
+        {
+          "name": "discount_value",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX idx_quotes_number ON quotes (quote_number)",
         "CREATE INDEX idx_quotes_status ON quotes (status)",
-        "CREATE INDEX idx_quotes_client ON quotes (client)"
+        "CREATE INDEX idx_quotes_client ON quotes (client)",
+        "CREATE UNIQUE INDEX `idx_quotes_number_revision` ON `quotes` (quote_number, revision)"
       ]
     },
     {
@@ -512,6 +531,18 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "quote_revision",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "discount_value",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

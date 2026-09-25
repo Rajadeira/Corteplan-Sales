@@ -336,7 +336,7 @@ export default function QuoteFollowup() {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-mono font-bold text-sm bg-slate-100 text-[#3A3A3C] px-2.5 py-0.5 rounded-lg border border-slate-200">
-                {formatQuoteNumber(quote.quote_number)}
+                {formatQuoteNumber(quote.quote_number, quote.revision)}
               </span>
               <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                 Controle de Follow-up
@@ -624,7 +624,7 @@ export default function QuoteFollowup() {
               {editingFollowup ? 'Editar Contato de Follow-up' : 'Registrar Contato de Follow-up'}
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              {formatQuoteNumber(quote.quote_number)} &bull;{' '}
+              {formatQuoteNumber(quote.quote_number, quote.revision)} &bull;{' '}
               {quote.expand?.client?.name || 'Cliente'}
             </DialogDescription>
           </DialogHeader>

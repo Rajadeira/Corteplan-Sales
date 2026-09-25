@@ -166,11 +166,12 @@ export default function Quotes() {
         return false
       }
 
-      // Busca por número, cliente, vendedor, pedido ou observação
+      // Busca por número (com revisão), cliente, vendedor, pedido ou observação
       if (search.trim()) {
         const clean = search.toLowerCase().trim()
-        const numFormatted = formatQuoteNumber(q.quote_number).toLowerCase()
+        const numFormatted = formatQuoteNumber(q.quote_number, q.revision).toLowerCase()
         const numRaw = String(q.quote_number)
+        const revStr = q.revision ? `rev${String(q.revision).padStart(2, '0')}`.toLowerCase() : ''
         const orderNumStr = q.order_number ? formatOrderNumber(q.order_number).toLowerCase() : ''
         const clientName = (q.expand?.client?.name || '').toLowerCase()
         const clientCompany = (q.expand?.client?.company || '').toLowerCase()
@@ -181,6 +182,7 @@ export default function Quotes() {
         const matches =
           numFormatted.includes(clean) ||
           numRaw.includes(clean) ||
+          revStr.includes(clean) ||
           orderNumStr.includes(clean) ||
           clientName.includes(clean) ||
           clientCompany.includes(clean) ||
@@ -371,24 +373,26 @@ export default function Quotes() {
                     >
                       {/* Número sequencial formatado */}
                       <td className="py-3.5 px-5">
-                        <Link
-                          to={`/orcamentos/${quote.id}`}
-                          className="inline-flex items-center gap-1.5 font-mono font-bold text-xs bg-slate-100 text-[#3A3A3C] px-2.5 py-1 rounded-lg border border-slate-200/80 group-hover:bg-[#3A3A3C] group-hover:text-white transition-colors"
-                        >
-                          {formatQuoteNumber(quote.quote_number)}
-                        </Link>
-
-                        {/* Exibir o número do pedido vinculado caso já tenha gerado */}
-                        {quote.order_number && (
+                        <div className="flex flex-col items-start gap-1">
                           <Link
-                            to={`/pedidos/${quote.order_id || ''}`}
-                            className="flex items-center gap-1 font-mono text-[11px] text-[#E66812] hover:underline mt-1 font-semibold"
-                            title="Ver pedido vinculado"
+                            to={`/orcamentos/${quote.id}`}
+                            className="inline-flex items-center gap-1.5 font-mono font-bold text-xs bg-slate-100 text-[#3A3A3C] px-2.5 py-1 rounded-lg border border-slate-200/80 group-hover:bg-[#3A3A3C] group-hover:text-white transition-colors"
                           >
-                            <PackageCheck className="h-3 w-3" />
-                            <span>{formatOrderNumber(quote.order_number)}</span>
+                            {formatQuoteNumber(quote.quote_number, quote.revision)}
                           </Link>
-                        )}
+
+                          {/* Exibir o número do pedido vinculado caso já tenha gerado */}
+                          {quote.order_number && (
+                            <Link
+                              to={`/pedidos/${quote.order_id || ''}`}
+                              className="flex items-center gap-1 font-mono text-[11px] text-[#E66812] hover:underline font-semibold"
+                              title="Ver pedido vinculado"
+                            >
+                              <PackageCheck className="h-3 w-3" />
+                              <span>{formatOrderNumber(quote.order_number)}</span>
+                            </Link>
+                          )}
+                        </div>
                       </td>
 
                       {/* Cliente */}
@@ -600,7 +604,7 @@ export default function Quotes() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono font-bold text-xs bg-slate-100 text-[#3A3A3C] px-2.5 py-1 rounded-lg border border-slate-200">
-                        {formatQuoteNumber(quote.quote_number)}
+                        {formatQuoteNumber(quote.quote_number, quote.revision)}
                       </span>
                       {fStatus.isPendingReturn && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">

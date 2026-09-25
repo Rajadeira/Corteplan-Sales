@@ -5,12 +5,15 @@ export interface CreateQuoteData {
   client: string
   items: QuoteItem[]
   discount_percent: number
+  discount_value?: number
   subtotal: number
   total: number
   status: QuoteStatus
   observations?: string
   status_history?: StatusHistoryEntry[]
   quote_number?: number
+  revision?: number
+  parent_quote?: string
 
   // Novos campos Corteplan
   icms?: number
@@ -34,7 +37,7 @@ export type UpdateQuoteData = Partial<CreateQuoteData>
 export const quoteService = {
   async getAll(): Promise<QuoteRecord[]> {
     return pb.collection('quotes').getFullList<QuoteRecord>({
-      sort: '-quote_number',
+      sort: '-quote_number,-revision',
       expand: 'client,seller_user',
     })
   },
@@ -59,7 +62,7 @@ export const quoteService = {
     const filterString = filters.join(' && ')
     const res = await pb.collection('quotes').getList<QuoteRecord>(page, perPage, {
       filter: filterString || undefined,
-      sort: '-quote_number',
+      sort: '-quote_number,-revision',
       expand: 'client,seller_user',
     })
     return {
@@ -71,8 +74,34 @@ export const quoteService = {
 
   async getById(id: string): Promise<QuoteRecord> {
     return pb.collection('quotes').getOne<QuoteRecord>(id, {
+      expand: 'client,seller_user,parent_quote',
+    })
+  },
+
+  /**
+   * Retorna todas as versões/revisões de um mesmo número de orçamento
+   */
+  async getRevisionsByQuoteNumber(quoteNumber: number): Promise<QuoteRecord[]> {
+    return pb.collection('quotes').getFullList<QuoteRecord>({
+      filter: `quote_number = ${quoteNumber}`,
+      sort: 'revision',
       expand: 'client,seller_user',
     })
+  },
+
+  /**
+   * Obtém o próximo número de revisão para um orçamento específico
+   */
+  async getNextRevisionNumber(quoteNumber: number): Promise<number> {
+    const list = await pb.collection('quotes').getList<QuoteRecord>(1, 1, {
+      filter: `quote_number = ${quoteNumber}`,
+      sort: '-revision',
+    })
+    if (list.items.length > 0) {
+      const highest = list.items[0].revision || 0
+      return highest + 1
+    }
+    return 1
   },
 
   async getByClientId(clientId: string): Promise<QuoteRecord[]> {
@@ -155,12 +184,99 @@ export const quoteService = {
       {
         ...data,
         quote_number: quoteNumber,
+        revision: data.revision !== undefined ? data.revision : 0,
         status_history: initialHistory,
       },
       {
-        expand: 'client',
+        expand: 'client,seller_user',
       },
     )
+  },
+
+  /**
+   * Cria uma nova revisão a partir de um orçamento existente (Rev01, Rev02, ...)
+   * Mantém o orçamento original intacto no histórico e retorna a nova versão
+   */
+  async createRevision(
+    originalQuoteId: string,
+    updatedData: Partial<CreateQuoteData>,
+    userName: string = 'Usuário',
+  ): Promise<QuoteRecord> {
+    const original = await this.getById(originalQuoteId)
+    const quoteNumber = original.quote_number
+    const nextRevision = await this.getNextRevisionNumber(quoteNumber)
+
+    const revStr = `Rev${String(nextRevision).padStart(2, '0')}`
+
+    // Herda todos os dados do original, sobrescrevendo com o que foi alterado
+    const newItems = updatedData.items || original.items || []
+    const newInstallments = updatedData.installments || original.installments || []
+    const newHistory: StatusHistoryEntry[] = [
+      {
+        status: updatedData.status || 'Rascunho',
+        changed_at: new Date().toISOString(),
+        changed_by: userName,
+      },
+    ]
+
+    const newQuotePayload: Record<string, unknown> = {
+      quote_number: quoteNumber,
+      revision: nextRevision,
+      parent_quote: original.id,
+      client: updatedData.client || original.client,
+      items: newItems,
+      discount_percent:
+        updatedData.discount_percent !== undefined
+          ? updatedData.discount_percent
+          : original.discount_percent || 0,
+      discount_value:
+        updatedData.discount_value !== undefined
+          ? updatedData.discount_value
+          : original.discount_value || 0,
+      subtotal: updatedData.subtotal !== undefined ? updatedData.subtotal : original.subtotal || 0,
+      total: updatedData.total !== undefined ? updatedData.total : original.total || 0,
+      status: updatedData.status || 'Rascunho',
+      observations:
+        updatedData.observations !== undefined ? updatedData.observations : original.observations,
+      seller: updatedData.seller !== undefined ? updatedData.seller : original.seller,
+      seller_user:
+        updatedData.seller_user !== undefined ? updatedData.seller_user : original.seller_user,
+      commission_percent:
+        updatedData.commission_percent !== undefined
+          ? updatedData.commission_percent
+          : original.commission_percent,
+      validity_days:
+        updatedData.validity_days !== undefined
+          ? updatedData.validity_days
+          : original.validity_days,
+      delivery_term:
+        updatedData.delivery_term !== undefined
+          ? updatedData.delivery_term
+          : original.delivery_term,
+      payment_terms:
+        updatedData.payment_terms !== undefined
+          ? updatedData.payment_terms
+          : original.payment_terms,
+      icms: updatedData.icms !== undefined ? updatedData.icms : original.icms || 0,
+      ipi: updatedData.ipi !== undefined ? updatedData.ipi : original.ipi || 0,
+      pis: updatedData.pis !== undefined ? updatedData.pis : original.pis || 0,
+      cofins: updatedData.cofins !== undefined ? updatedData.cofins : original.cofins || 0,
+      installments: newInstallments,
+      layout_config:
+        updatedData.layout_config !== undefined
+          ? updatedData.layout_config
+          : original.layout_config,
+      status_history: newHistory,
+      // Nova versão inicia sem pedido vinculado (pedido do original não é afetado)
+      order_number: 0,
+      order_id: '',
+    }
+
+    const created = await pb.collection('quotes').create<QuoteRecord>(newQuotePayload, {
+      expand: 'client,seller_user,parent_quote',
+    })
+
+    return created
   },
 
   async update(id: string, data: UpdateQuoteData): Promise<QuoteRecord> {

@@ -51,20 +51,24 @@ onRecordCreate((e) => {
     } catch (_) {}
   } else {
     // Se veio um quote_number explicitamente, atualiza o last_quote_number se for maior
-    try {
-      const settingRec = $app.findFirstRecordByData(
-        'app_settings',
-        'setting_key',
-        'last_quote_number',
-      )
-      if (settingRec) {
-        const currentVal = parseInt(settingRec.get('value'), 10) || 0
-        if (currentNumber > currentVal) {
-          settingRec.set('value', currentNumber)
-          $app.save(settingRec)
+    // (Apenas se não for uma revisão criada a partir de um orçamento já existente)
+    const revision = e.record.getInt('revision') || 0
+    if (revision === 0) {
+      try {
+        const settingRec = $app.findFirstRecordByData(
+          'app_settings',
+          'setting_key',
+          'last_quote_number',
+        )
+        if (settingRec) {
+          const currentVal = parseInt(settingRec.get('value'), 10) || 0
+          if (currentNumber > currentVal) {
+            settingRec.set('value', currentNumber)
+            $app.save(settingRec)
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
   }
 
   // Ensure status_history initialized if empty

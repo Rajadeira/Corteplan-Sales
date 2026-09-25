@@ -650,7 +650,7 @@ export default function Index() {
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="font-mono font-bold text-xs bg-slate-100 text-[#3A3A3C] px-2 py-0.5 rounded-md border border-slate-200">
-                        {formatQuoteNumber(q.quote_number)}
+                        {formatQuoteNumber(q.quote_number, q.revision)}
                       </span>
                       <span className="text-[10px] font-bold text-[#E66812] bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">
                         <Clock className="h-3 w-3" />
@@ -878,7 +878,7 @@ export default function Index() {
                     <div className="truncate pr-3">
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-xs text-[#3A3A3C] group-hover:text-[#F08A24]">
-                          {formatQuoteNumber(quote.quote_number)}
+                          {formatQuoteNumber(quote.quote_number, quote.revision)}
                         </span>
                         {getStatusBadge(quote.status)}
                       </div>
