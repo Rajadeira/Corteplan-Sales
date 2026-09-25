@@ -912,7 +912,7 @@ export default function Layout() {
         </header>
 
         {/* Page Content Viewport */}
-        <main className="flex-1 p-4 md:p-8 animate-in fade-in-50 duration-200 max-w-7xl w-full mx-auto print:p-0 print:m-0 print:max-w-none print:w-full print:block">
+        <main className="flex-1 p-4 md:p-6 lg:p-8 animate-in fade-in-50 duration-200 max-w-[1600px] w-full mx-auto print:p-0 print:m-0 print:max-w-none print:w-full print:block">
           <Outlet />
         </main>
 

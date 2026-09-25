@@ -92,3 +92,28 @@ export function canManageRecord(
   }
   return isQuoteOwner(record as QuoteRecord, user)
 }
+
+/**
+ * Retorna se o usuário tem permissão para excluir um orçamento:
+ * Somente quem criou o orçamento ou um Administrador tem acesso total.
+ */
+export function canDeleteQuote(
+  quote: Partial<QuoteRecord> | null | undefined,
+  user: UserProfile | null | undefined,
+): boolean {
+  if (!quote || !user) return false
+  if (user.role === 'Administrador') return true
+
+  const authId = user.id
+  const authName = (user.name || '').toLowerCase().trim()
+  const sellerUser = quote.seller_user
+  const sellerName = (quote.seller || '').toLowerCase().trim()
+
+  // Dono pelo id do usuário ou pelo nome registrado
+  if (sellerUser && sellerUser === authId) return true
+  if (authName && sellerName && (sellerName.includes(authName) || authName.includes(sellerName))) {
+    return true
+  }
+
+  return false
+}

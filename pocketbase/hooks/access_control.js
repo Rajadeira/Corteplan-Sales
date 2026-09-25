@@ -63,7 +63,7 @@ onRecordDeleteRequest((e) => {
     (!sellerUser && authName && sellerName.includes(authName))
 
   if (!isOwner) {
-    throw new ForbiddenError('Vendedor só pode excluir seus próprios orçamentos.')
+    throw new ForbiddenError('Somente quem criou o orçamento ou um Administrador pode excluí-lo.')
   }
 
   e.next()

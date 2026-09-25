@@ -14,6 +14,7 @@ import {
   ExternalLink,
   PhoneCall,
   AlertCircle,
+  Trash2,
 } from 'lucide-react'
 import { quoteService } from '@/services/quotes'
 import { orderService } from '@/services/orders'
@@ -27,8 +28,18 @@ import type {
   ProposalBlockId,
   BlockStyleConfig,
 } from '@/types'
-import { canViewValues, canManageRecord } from '@/lib/permissions'
+import { canViewValues, canManageRecord, canDeleteQuote } from '@/lib/permissions'
 import { Lock, ShieldAlert } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   CorelToolbar,
   LayoutBlockWrapper,
@@ -67,6 +78,21 @@ export default function QuoteDetail() {
   const [loading, setLoading] = useState(true)
   const [statusLoading, setStatusLoading] = useState(false)
   const [generatingOrder, setGeneratingOrder] = useState(false)
+
+  // Estado para exclusão em QuoteDetail
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteLinkedInfo, setDeleteLinkedInfo] = useState<{
+    loading: boolean
+    revisionsCount: number
+    followupsCount: number
+    ordersCount: number
+  }>({
+    loading: false,
+    revisionsCount: 0,
+    followupsCount: 0,
+    ordersCount: 0,
+  })
 
   // Estado do Modo de Diagramação / Ajuste Manual de Layout (estilo CorelDRAW)
   const [isLayoutEditMode, setIsLayoutEditMode] = useState(false)
@@ -261,6 +287,61 @@ export default function QuoteDetail() {
       }
     }
   }, [searchParams, quote, loading, layoutConfig.printSettings])
+
+  const handleOpenDeleteDialog = async () => {
+    if (!quote) return
+    setIsDeleteDialogOpen(true)
+    setDeleteLinkedInfo({
+      loading: true,
+      revisionsCount: 0,
+      followupsCount: 0,
+      ordersCount: 0,
+    })
+
+    try {
+      const counts = await quoteService.getLinkedCounts(quote.id, quote.quote_number)
+      setDeleteLinkedInfo({
+        loading: false,
+        revisionsCount: counts.revisionsCount,
+        followupsCount: counts.followupsCount,
+        ordersCount: counts.ordersCount,
+      })
+    } catch {
+      setDeleteLinkedInfo({
+        loading: false,
+        revisionsCount: 0,
+        followupsCount: 0,
+        ordersCount: 0,
+      })
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!quote) return
+    setIsDeleting(true)
+    const quoteNumFormatted = formatQuoteNumber(quote.quote_number, quote.revision)
+    const isOriginalWithRevs =
+      (!quote.revision || quote.revision === 0) && deleteLinkedInfo.revisionsCount > 0
+
+    try {
+      await quoteService.delete(quote.id)
+      if (isOriginalWithRevs) {
+        toast.success(
+          `Orçamento ${quoteNumFormatted} excluído! A revisão mais antiga (Rev01) foi promovida automaticamente para padrão.`,
+        )
+      } else {
+        toast.success(`Orçamento ${quoteNumFormatted} excluído com sucesso!`)
+      }
+      setIsDeleteDialogOpen(false)
+      navigate('/orcamentos')
+    } catch (err: unknown) {
+      console.error('Erro ao excluir orçamento:', err)
+      const msg = err instanceof Error ? err.message : 'Erro ao excluir orçamento.'
+      toast.error(msg)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   const handleGenerateOrder = async () => {
     if (!quote) return
@@ -577,6 +658,18 @@ export default function QuoteDetail() {
                 Imprimir / Salvar PDF
               </Button>
             </>
+          )}
+
+          {canDeleteQuote(quote, user) && (
+            <Button
+              variant="outline"
+              onClick={handleOpenDeleteDialog}
+              className="rounded-xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 font-medium"
+              title="Excluir este orçamento"
+            >
+              <Trash2 className="h-4 w-4 mr-1.5" />
+              Excluir
+            </Button>
           )}
         </div>
       </div>
@@ -1241,6 +1334,96 @@ export default function QuoteDetail() {
         onSaveSettings={handleSavePrintSettings}
         isSaving={savingLayout}
       />
+
+      {/* Modal AlertDialog de Confirmação de Exclusão em QuoteDetail */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent className="rounded-2xl max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-slate-900 flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-600" />
+              Excluir Orçamento
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3 text-slate-600 text-xs sm:text-sm pt-1">
+              <p>
+                Tem certeza de que deseja excluir o orçamento{' '}
+                <strong className="font-mono text-slate-900">
+                  {quote ? formatQuoteNumber(quote.quote_number, quote.revision) : ''}
+                </strong>
+                ? Esta ação é <strong className="text-red-600">definitiva e irreversível</strong>.
+              </p>
+
+              {deleteLinkedInfo.loading ? (
+                <div className="flex items-center gap-2 py-2 text-xs text-slate-500">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Verificando vínculos (pedidos, revisões, follow-ups)...
+                </div>
+              ) : (
+                <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 space-y-1.5 text-xs">
+                  <div className="font-semibold text-slate-700">Vínculos detectados:</div>
+                  <div className="flex items-center justify-between text-slate-600">
+                    <span>Pedidos vinculados:</span>
+                    <span
+                      className={`font-mono font-bold ${deleteLinkedInfo.ordersCount > 0 ? 'text-[#E66812]' : 'text-slate-500'}`}
+                    >
+                      {deleteLinkedInfo.ordersCount}
+                    </span>
+                  </div>
+                  {deleteLinkedInfo.ordersCount > 0 && (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200">
+                      ℹ O pedido vinculado <strong>permanecerá existindo</strong> no sistema. Apenas
+                      este orçamento será removido.
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between text-slate-600">
+                    <span>Revisões cadastradas:</span>
+                    <span
+                      className={`font-mono font-bold ${deleteLinkedInfo.revisionsCount > 0 ? 'text-blue-600' : 'text-slate-500'}`}
+                    >
+                      {deleteLinkedInfo.revisionsCount}
+                    </span>
+                  </div>
+                  {(!quote?.revision || quote?.revision === 0) &&
+                    deleteLinkedInfo.revisionsCount > 0 && (
+                      <p className="text-[11px] text-blue-700 bg-blue-50 p-1.5 rounded border border-blue-200">
+                        ℹ Como este é o orçamento <strong>ORIGINAL</strong>, a revisão mais antiga
+                        existente (<strong>Rev01</strong>) será automaticamente promovida a
+                        padrão/original, mantendo o número sem sufixo de revisão.
+                      </p>
+                    )}
+                  <div className="flex items-center justify-between text-slate-600">
+                    <span>Follow-ups registrados:</span>
+                    <span className="font-mono font-bold text-slate-500">
+                      {deleteLinkedInfo.followupsCount}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting} className="rounded-xl">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeleting}
+              onClick={(e) => {
+                e.preventDefault()
+                handleConfirmDelete()
+              }}
+              className="rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                'Confirmar Exclusão'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Linha do Tempo de Status (Apenas na tela, escondida na impressão) */}
       <div className="print:hidden bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">

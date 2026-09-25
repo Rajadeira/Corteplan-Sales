@@ -347,6 +347,61 @@ export const quoteService = {
   },
 
   /**
+   * Obtém a contagem de vínculos associados a um orçamento antes de excluir:
+   * - Quantidade de revisões vinculadas
+   * - Quantidade de follow-ups
+   * - Quantidade de pedidos vinculados
+   */
+  async getLinkedCounts(
+    quoteId: string,
+    quoteNumber?: number,
+  ): Promise<{
+    revisionsCount: number
+    followupsCount: number
+    ordersCount: number
+  }> {
+    try {
+      const [followupsRes, ordersRes] = await Promise.all([
+        pb
+          .collection('followups')
+          .getList(1, 1, {
+            filter: `quote = '${quoteId}'`,
+          })
+          .catch(() => ({ totalItems: 0 })),
+        pb
+          .collection('orders')
+          .getList(1, 1, {
+            filter: `quote = '${quoteId}' || quote_number = ${quoteNumber || 0}`,
+          })
+          .catch(() => ({ totalItems: 0 })),
+      ])
+
+      let revisionsCount = 0
+      if (quoteNumber) {
+        const revsRes = await pb
+          .collection('quotes')
+          .getList(1, 100, {
+            filter: `quote_number = ${quoteNumber} && id != '${quoteId}'`,
+          })
+          .catch(() => ({ totalItems: 0 }))
+        revisionsCount = revsRes.totalItems
+      }
+
+      return {
+        revisionsCount,
+        followupsCount: followupsRes.totalItems,
+        ordersCount: ordersRes.totalItems,
+      }
+    } catch {
+      return {
+        revisionsCount: 0,
+        followupsCount: 0,
+        ordersCount: 0,
+      }
+    }
+  },
+
+  /**
    * Obtém histórico recente de itens utilizados em orçamentos anteriores
    */
   async getRecentItemsHistory(limit: number = 30): Promise<QuoteItem[]> {

@@ -16,6 +16,7 @@ import {
   ArrowRight,
   PhoneCall,
   AlertCircle,
+  Trash2,
 } from 'lucide-react'
 import { quoteService } from '@/services/quotes'
 import { orderService } from '@/services/orders'
@@ -30,11 +31,21 @@ import {
   formatOrderNumber,
   calculateCommission,
 } from '@/types'
-import { canViewValues, canManageRecord } from '@/lib/permissions'
+import { canViewValues, canManageRecord, canDeleteQuote } from '@/lib/permissions'
 import { Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
 
 const statusList: { key: string; label: string }[] = [
@@ -53,6 +64,21 @@ export default function Quotes() {
   const [allFollowups, setAllFollowups] = useState<FollowupRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [generatingOrderId, setGeneratingOrderId] = useState<string | null>(null)
+
+  // Estado para exclusão de orçamento com modal de confirmação
+  const [quoteToDelete, setQuoteToDelete] = useState<QuoteRecord | null>(null)
+  const [isDeletingQuote, setIsDeletingQuote] = useState(false)
+  const [deleteLinkedInfo, setDeleteLinkedInfo] = useState<{
+    loading: boolean
+    revisionsCount: number
+    followupsCount: number
+    ordersCount: number
+  }>({
+    loading: false,
+    revisionsCount: 0,
+    followupsCount: 0,
+    ordersCount: 0,
+  })
 
   // Filtros e busca
   const [statusFilter, setStatusFilter] = useState('Todos')
@@ -129,6 +155,63 @@ export default function Quotes() {
     }
     return counts
   }, [quotes, followupsByQuoteId])
+
+  // Abertura do modal de confirmação de exclusão
+  const handleOpenDeleteDialog = async (quote: QuoteRecord) => {
+    setQuoteToDelete(quote)
+    setDeleteLinkedInfo({
+      loading: true,
+      revisionsCount: 0,
+      followupsCount: 0,
+      ordersCount: 0,
+    })
+
+    try {
+      const counts = await quoteService.getLinkedCounts(quote.id, quote.quote_number)
+      setDeleteLinkedInfo({
+        loading: false,
+        revisionsCount: counts.revisionsCount,
+        followupsCount: counts.followupsCount,
+        ordersCount: counts.ordersCount,
+      })
+    } catch {
+      setDeleteLinkedInfo({
+        loading: false,
+        revisionsCount: 0,
+        followupsCount: 0,
+        ordersCount: 0,
+      })
+    }
+  }
+
+  // Confirmação da exclusão definitiva
+  const handleConfirmDelete = async () => {
+    if (!quoteToDelete) return
+    setIsDeletingQuote(true)
+    const quoteNumFormatted = formatQuoteNumber(quoteToDelete.quote_number, quoteToDelete.revision)
+    const isOriginalWithRevs =
+      (!quoteToDelete.revision || quoteToDelete.revision === 0) &&
+      deleteLinkedInfo.revisionsCount > 0
+
+    try {
+      await quoteService.delete(quoteToDelete.id)
+      if (isOriginalWithRevs) {
+        toast.success(
+          `Orçamento ${quoteNumFormatted} excluído com sucesso! A primeira revisão (Rev01) foi promovida automaticamente para original.`,
+        )
+      } else {
+        toast.success(`Orçamento ${quoteNumFormatted} excluído com sucesso!`)
+      }
+      setQuoteToDelete(null)
+      await loadData()
+    } catch (err: unknown) {
+      console.error('Erro ao excluir orçamento:', err)
+      const msg = err instanceof Error ? err.message : 'Erro ao excluir orçamento.'
+      toast.error(msg)
+    } finally {
+      setIsDeletingQuote(false)
+    }
+  }
 
   // Gerar pedido a partir de orçamento
   const handleGenerateOrder = async (quote: QuoteRecord) => {
@@ -347,242 +430,255 @@ export default function Quotes() {
         </div>
       ) : (
         <>
-          {/* Tabela Desktop */}
+          {/* Tabela Desktop com overflow horizontal suave */}
           <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3.5 px-5">Número</th>
-                  <th className="py-3.5 px-4">Cliente / Razão</th>
-                  <th className="py-3.5 px-4">Data de Emissão</th>
-                  <th className="py-3.5 px-4">Valor Total</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-5 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
-                {paginatedQuotes.map((quote) => {
-                  const qFollowups = followupsByQuoteId.get(quote.id) || []
-                  const fStatus = getFollowupStatus(quote, qFollowups)
-                  const followupsCount = qFollowups.length
+            <div className="overflow-x-auto scrollbar-thin">
+              <table className="w-full text-left border-collapse min-w-[960px]">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="py-3 px-3 w-[120px]">Número</th>
+                    <th className="py-3 px-3">Cliente / Razão</th>
+                    <th className="py-3 px-3 w-[105px]">Data Emissão</th>
+                    <th className="py-3 px-3 w-[150px]">Valor Total</th>
+                    <th className="py-3 px-3 w-[120px]">Status</th>
+                    <th className="py-3 px-3 text-right w-[340px]">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
+                  {paginatedQuotes.map((quote) => {
+                    const qFollowups = followupsByQuoteId.get(quote.id) || []
+                    const fStatus = getFollowupStatus(quote, qFollowups)
+                    const followupsCount = qFollowups.length
+                    const userCanDelete = canDeleteQuote(quote, user)
 
-                  return (
-                    <tr
-                      key={quote.id}
-                      className="hover:bg-[#F1F5F9] transition-colors duration-150 group"
-                    >
-                      {/* Número sequencial formatado */}
-                      <td className="py-3.5 px-5">
-                        <div className="flex flex-col items-start gap-1">
-                          <Link
-                            to={`/orcamentos/${quote.id}`}
-                            className="inline-flex items-center gap-1.5 font-mono font-bold text-xs bg-slate-100 text-[#3A3A3C] px-2.5 py-1 rounded-lg border border-slate-200/80 group-hover:bg-[#3A3A3C] group-hover:text-white transition-colors"
-                          >
-                            {formatQuoteNumber(quote.quote_number, quote.revision)}
-                          </Link>
-
-                          {/* Exibir o número do pedido vinculado caso já tenha gerado */}
-                          {quote.order_number && (
+                    return (
+                      <tr
+                        key={quote.id}
+                        className="hover:bg-[#F8FAFC] transition-colors duration-150 group"
+                      >
+                        {/* Número sequencial formatado */}
+                        <td className="py-3 px-3 align-middle">
+                          <div className="flex flex-col items-start gap-1">
                             <Link
-                              to={`/pedidos/${quote.order_id || ''}`}
-                              className="flex items-center gap-1 font-mono text-[11px] text-[#E66812] hover:underline font-semibold"
-                              title="Ver pedido vinculado"
+                              to={`/orcamentos/${quote.id}`}
+                              className="inline-flex items-center gap-1 font-mono font-bold text-xs bg-slate-100 text-[#3A3A3C] px-2 py-0.5 rounded-lg border border-slate-200/80 group-hover:bg-[#3A3A3C] group-hover:text-white transition-colors whitespace-nowrap"
                             >
-                              <PackageCheck className="h-3 w-3" />
-                              <span>{formatOrderNumber(quote.order_number)}</span>
+                              {formatQuoteNumber(quote.quote_number, quote.revision)}
                             </Link>
-                          )}
-                        </div>
-                      </td>
 
-                      {/* Cliente */}
-                      <td className="py-3.5 px-4">
-                        {quote.expand?.client ? (
-                          <Link
-                            to={`/clientes/${quote.expand.client.id}`}
-                            className="font-semibold text-slate-900 group-hover:text-[#3A3A3C] hover:underline block truncate max-w-xs"
-                          >
-                            {quote.expand.client.name}
-                            {quote.expand.client.company && (
-                              <span className="text-slate-400 font-normal text-xs block">
-                                {quote.expand.client.company}
+                            {/* Exibir o número do pedido vinculado caso já tenha gerado */}
+                            {quote.order_number ? (
+                              <Link
+                                to={`/pedidos/${quote.order_id || ''}`}
+                                className="flex items-center gap-1 font-mono text-[10px] text-[#E66812] hover:underline font-semibold whitespace-nowrap"
+                                title="Ver pedido vinculado"
+                              >
+                                <PackageCheck className="h-3 w-3 shrink-0" />
+                                <span>{formatOrderNumber(quote.order_number)}</span>
+                              </Link>
+                            ) : null}
+                          </div>
+                        </td>
+
+                        {/* Cliente */}
+                        <td className="py-3 px-3 align-middle">
+                          {quote.expand?.client ? (
+                            <Link
+                              to={`/clientes/${quote.expand.client.id}`}
+                              className="font-semibold text-slate-900 group-hover:text-[#3A3A3C] hover:underline block truncate max-w-[200px] xl:max-w-xs"
+                            >
+                              {quote.expand.client.name}
+                              {quote.expand.client.company && (
+                                <span className="text-slate-400 font-normal text-xs block truncate">
+                                  {quote.expand.client.company}
+                                </span>
+                              )}
+                            </Link>
+                          ) : (
+                            <span className="text-slate-400">Cliente não identificado</span>
+                          )}
+                        </td>
+
+                        {/* Data de Emissão */}
+                        <td className="py-3 px-3 text-xs text-slate-500 whitespace-nowrap align-middle">
+                          {formatDateBR(quote.created)}
+                        </td>
+
+                        {/* Valor Total + Comissão Secundária */}
+                        <td className="py-3 px-3 whitespace-nowrap align-middle">
+                          {canViewValues(quote, user) ? (
+                            <>
+                              <span className="font-mono font-bold text-xs sm:text-sm text-slate-900 block">
+                                {formatCurrencyBRL(quote.total)}
+                              </span>
+                              {(() => {
+                                const sellerName =
+                                  quote.seller || quote.expand?.seller_user?.name || 'Gustavo'
+                                const { commissionAmount } = calculateCommission(
+                                  quote.items,
+                                  quote.discount_percent,
+                                  quote.commission_percent,
+                                )
+                                if (commissionAmount > 0) {
+                                  return (
+                                    <span
+                                      className="text-[10px] text-slate-500 block truncate max-w-[150px]"
+                                      title={`Comissão calculada: ${formatCurrencyBRL(commissionAmount)} — ${sellerName}`}
+                                    >
+                                      Comissão: {formatCurrencyBRL(commissionAmount)}
+                                    </span>
+                                  )
+                                }
+                                if (sellerName) {
+                                  return (
+                                    <span className="text-[10px] text-slate-400 block truncate max-w-[150px]">
+                                      {sellerName}
+                                    </span>
+                                  )
+                                }
+                                return null
+                              })()}
+                            </>
+                          ) : (
+                            <div>
+                              <span className="inline-flex items-center gap-1 font-mono font-semibold text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                                <Lock className="h-3 w-3 text-slate-400" />
+                                Confidencial
+                              </span>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-3 px-3 whitespace-nowrap align-middle">
+                          <div className="space-y-1">
+                            <div>{getStatusBadge(quote.status)}</div>
+                            {fStatus.isPendingReturn && (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-800 border border-amber-300 animate-pulse"
+                                title={`Aviso: sem retorno há ${fStatus.daysElapsed} dias`}
+                              >
+                                <AlertCircle className="h-3 w-3 text-[#E66812] shrink-0" />
+                                Pendente
                               </span>
                             )}
-                          </Link>
-                        ) : (
-                          <span className="text-slate-400">Cliente não identificado</span>
-                        )}
-                      </td>
-
-                      {/* Data de Emissão */}
-                      <td className="py-3.5 px-4 text-xs text-slate-500 whitespace-nowrap">
-                        {formatDateBR(quote.created)}
-                      </td>
-
-                      {/* Valor Total + Comissão Secundária */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {canViewValues(quote, user) ? (
-                          <>
-                            <span className="font-mono font-bold text-xs sm:text-sm text-slate-900 block">
-                              {formatCurrencyBRL(quote.total)}
-                            </span>
-                            {(() => {
-                              const sellerName =
-                                quote.seller || quote.expand?.seller_user?.name || 'Gustavo'
-                              const { commissionAmount } = calculateCommission(
-                                quote.items,
-                                quote.discount_percent,
-                                quote.commission_percent,
-                              )
-                              if (commissionAmount > 0) {
-                                return (
-                                  <span
-                                    className="text-[11px] text-slate-500 block truncate"
-                                    title={`Comissão calculada: ${formatCurrencyBRL(commissionAmount)} — ${sellerName}`}
-                                  >
-                                    Comissão: {formatCurrencyBRL(commissionAmount)} — {sellerName}
-                                  </span>
-                                )
-                              }
-                              if (sellerName) {
-                                return (
-                                  <span className="text-[11px] text-slate-400 block truncate">
-                                    Vendedor: {sellerName}
-                                  </span>
-                                )
-                              }
-                              return null
-                            })()}
-                          </>
-                        ) : (
-                          <div>
-                            <span className="inline-flex items-center gap-1 font-mono font-semibold text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                              <Lock className="h-3 w-3 text-slate-400" />
-                              Confidencial
-                            </span>
-                            <span className="text-[11px] text-slate-400 block truncate mt-0.5">
-                              Vendedor:{' '}
-                              {quote.seller || quote.expand?.seller_user?.name || 'Outro Vendedor'}
-                            </span>
                           </div>
-                        )}
-                      </td>
+                        </td>
 
-                      {/* Status */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="space-y-1">
-                          <div>{getStatusBadge(quote.status)}</div>
-                          {fStatus.isPendingReturn && (
-                            <span
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-800 border border-amber-300 animate-pulse"
-                              title={`Aviso: sem retorno há ${fStatus.daysElapsed} dias`}
-                            >
-                              <AlertCircle className="h-3 w-3 text-[#E66812]" />
-                              Pendente de retorno
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Ações: Visualizar, Editar, Imprimir, Follow-up e Gerar Pedido */}
-                      <td className="py-3.5 px-5 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {/* Ação Follow-up: rótulo exato "Follow-up", ícone PhoneCall com badge de pendente ou contagem */}
-                          {canManageRecord(quote, user) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => navigate(`/orcamentos/${quote.id}/followup`)}
-                              className={`h-8 px-2.5 text-xs font-semibold rounded-lg transition-all ${
-                                fStatus.isPendingReturn
-                                  ? 'bg-amber-100/80 border-amber-300 text-amber-900 hover:bg-[#F08A24] hover:text-white shadow-xs animate-in zoom-in-95'
-                                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-                              }`}
-                              title={
-                                fStatus.isPendingReturn
-                                  ? `Follow-up urgente: sem contato há ${fStatus.daysElapsed} dias!`
-                                  : `Gerenciar contatos de follow-up (${followupsCount} registrado${followupsCount === 1 ? '' : 's'})`
-                              }
-                            >
-                              <PhoneCall
-                                className={`h-3.5 w-3.5 mr-1 ${
-                                  fStatus.isPendingReturn ? 'text-[#E66812]' : 'text-slate-500'
-                                }`}
-                              />
-                              Follow-up
-                              {fStatus.isPendingReturn ? (
-                                <span className="ml-1.5 h-2 w-2 rounded-full bg-[#E66812] ring-2 ring-white" />
-                              ) : followupsCount > 0 ? (
-                                <span className="ml-1.5 px-1 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px] font-mono font-bold">
-                                  {followupsCount}
-                                </span>
-                              ) : null}
-                            </Button>
-                          )}
-                          {/* Ação "Gerar pedido" disponível para Enviado ou Aprovado (somente dono ou admin) */}
-                          {canManageRecord(quote, user) &&
-                            (quote.status === 'Enviado' || quote.status === 'Aprovado') && (
+                        {/* Ações: Follow-up, Gerar Pedido, Visualizar, Editar, Imprimir e Excluir */}
+                        <td className="py-3 px-3 text-right whitespace-nowrap align-middle">
+                          <div className="flex items-center justify-end gap-1">
+                            {/* Ação Follow-up */}
+                            {canManageRecord(quote, user) && (
                               <Button
                                 variant="outline"
                                 size="sm"
-                                disabled={generatingOrderId === quote.id}
-                                onClick={() => handleGenerateOrder(quote)}
-                                className="h-8 px-2.5 text-xs font-semibold rounded-lg bg-orange-50/70 border-orange-200 text-[#E66812] hover:bg-[#F08A24] hover:text-white transition-all shadow-2xs"
+                                onClick={() => navigate(`/orcamentos/${quote.id}/followup`)}
+                                className={`h-8 px-2 text-xs font-semibold rounded-lg transition-all shrink-0 ${
+                                  fStatus.isPendingReturn
+                                    ? 'bg-amber-100/80 border-amber-300 text-amber-900 hover:bg-[#F08A24] hover:text-white shadow-xs'
+                                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                                }`}
                                 title={
-                                  quote.order_number
-                                    ? `Já possui pedido vinculado (${formatOrderNumber(quote.order_number)}). Clique para gerar novo se necessário.`
-                                    : 'Gerar Pedido a partir deste orçamento'
+                                  fStatus.isPendingReturn
+                                    ? `Follow-up urgente: sem contato há ${fStatus.daysElapsed} dias!`
+                                    : `Gerenciar follow-up (${followupsCount} registrado${followupsCount === 1 ? '' : 's'})`
                                 }
                               >
-                                {generatingOrderId === quote.id ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <PackageCheck className="h-3.5 w-3.5 mr-1" />
-                                )}
-                                Gerar pedido
+                                <PhoneCall
+                                  className={`h-3.5 w-3.5 mr-1 shrink-0 ${
+                                    fStatus.isPendingReturn ? 'text-[#E66812]' : 'text-slate-500'
+                                  }`}
+                                />
+                                <span>Follow-up</span>
+                                {fStatus.isPendingReturn ? (
+                                  <span className="ml-1 h-2 w-2 rounded-full bg-[#E66812] ring-1 ring-white shrink-0" />
+                                ) : followupsCount > 0 ? (
+                                  <span className="ml-1 px-1 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px] font-mono font-bold shrink-0">
+                                    {followupsCount}
+                                  </span>
+                                ) : null}
                               </Button>
                             )}
 
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => navigate(`/orcamentos/${quote.id}`)}
-                            className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Visualizar orçamento"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
+                            {/* Ação Gerar Pedido */}
+                            {canManageRecord(quote, user) &&
+                              (quote.status === 'Enviado' || quote.status === 'Aprovado') && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={generatingOrderId === quote.id}
+                                  onClick={() => handleGenerateOrder(quote)}
+                                  className="h-8 px-2 text-xs font-semibold rounded-lg bg-orange-50/70 border-orange-200 text-[#E66812] hover:bg-[#F08A24] hover:text-white transition-all shadow-2xs shrink-0"
+                                  title={
+                                    quote.order_number
+                                      ? `Já possui pedido vinculado (${formatOrderNumber(quote.order_number)}). Clique para gerar novo se necessário.`
+                                      : 'Gerar Pedido a partir deste orçamento'
+                                  }
+                                >
+                                  {generatingOrderId === quote.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1 shrink-0" />
+                                  ) : (
+                                    <PackageCheck className="h-3.5 w-3.5 mr-1 shrink-0" />
+                                  )}
+                                  <span>Gerar pedido</span>
+                                </Button>
+                              )}
 
-                          {canManageRecord(quote, user) && (
-                            <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => navigate(`/orcamentos/${quote.id}`)}
+                              className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shrink-0"
+                              title="Visualizar proposta"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+
+                            {canManageRecord(quote, user) && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => navigate(`/orcamentos/${quote.id}/editar`)}
+                                  className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors shrink-0"
+                                  title="Editar orçamento"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => navigate(`/orcamentos/${quote.id}?print=true`)}
+                                  className="h-8 w-8 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors shrink-0"
+                                  title="Imprimir proposta"
+                                >
+                                  <Printer className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+
+                            {/* Excluir Orçamento: Visível apenas a quem criou ou Administrador */}
+                            {userCanDelete && (
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => navigate(`/orcamentos/${quote.id}/editar`)}
-                                className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                                title="Editar orçamento"
+                                onClick={() => handleOpenDeleteDialog(quote)}
+                                className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                                title="Excluir orçamento"
                               >
-                                <Edit className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4" />
                               </Button>
-
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => navigate(`/orcamentos/${quote.id}?print=true`)}
-                                className="h-8 w-8 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-                                title="Imprimir proposta"
-                              >
-                                <Printer className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Cards Mobile (<768px) */}
@@ -748,6 +844,16 @@ export default function Quotes() {
                         </Button>
                       </>
                     )}
+                    {canDeleteQuote(quote, user) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenDeleteDialog(quote)}
+                        className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
+                      </Button>
+                    )}
                   </div>
                 </div>
               )
@@ -797,6 +903,102 @@ export default function Quotes() {
               </Button>
             </div>
           </div>
+
+          {/* Modal AlertDialog de Confirmação Obrigatória de Exclusão */}
+          <AlertDialog
+            open={!!quoteToDelete}
+            onOpenChange={(open) => !open && setQuoteToDelete(null)}
+          >
+            <AlertDialogContent className="rounded-2xl max-w-md">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-slate-900 flex items-center gap-2">
+                  <Trash2 className="h-5 w-5 text-red-600" />
+                  Excluir Orçamento
+                </AlertDialogTitle>
+                <AlertDialogDescription className="space-y-3 text-slate-600 text-xs sm:text-sm pt-1">
+                  <p>
+                    Tem certeza de que deseja excluir o orçamento{' '}
+                    <strong className="font-mono text-slate-900">
+                      {quoteToDelete
+                        ? formatQuoteNumber(quoteToDelete.quote_number, quoteToDelete.revision)
+                        : ''}
+                    </strong>
+                    ? Esta ação é{' '}
+                    <strong className="text-red-600">definitiva e irreversível</strong>.
+                  </p>
+
+                  {deleteLinkedInfo.loading ? (
+                    <div className="flex items-center gap-2 py-2 text-xs text-slate-500">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Verificando vínculos (pedidos, revisões, follow-ups)...
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 space-y-1.5 text-xs">
+                      <div className="font-semibold text-slate-700">Vínculos detectados:</div>
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span>Pedidos vinculados:</span>
+                        <span
+                          className={`font-mono font-bold ${deleteLinkedInfo.ordersCount > 0 ? 'text-[#E66812]' : 'text-slate-500'}`}
+                        >
+                          {deleteLinkedInfo.ordersCount}
+                        </span>
+                      </div>
+                      {deleteLinkedInfo.ordersCount > 0 && (
+                        <p className="text-[11px] text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200">
+                          ℹ O pedido vinculado <strong>permanecerá existindo</strong> no sistema.
+                          Apenas este orçamento será removido.
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span>Revisões cadastradas:</span>
+                        <span
+                          className={`font-mono font-bold ${deleteLinkedInfo.revisionsCount > 0 ? 'text-blue-600' : 'text-slate-500'}`}
+                        >
+                          {deleteLinkedInfo.revisionsCount}
+                        </span>
+                      </div>
+                      {(!quoteToDelete?.revision || quoteToDelete?.revision === 0) &&
+                        deleteLinkedInfo.revisionsCount > 0 && (
+                          <p className="text-[11px] text-blue-700 bg-blue-50 p-1.5 rounded border border-blue-200">
+                            ℹ Como este é o orçamento <strong>ORIGINAL</strong>, a revisão mais
+                            antiga existente (<strong>Rev01</strong>) será automaticamente promovida
+                            a padrão/original, mantendo o número sem sufixo de revisão.
+                          </p>
+                        )}
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span>Follow-ups registrados:</span>
+                        <span className="font-mono font-bold text-slate-500">
+                          {deleteLinkedInfo.followupsCount}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeletingQuote} className="rounded-xl">
+                  Cancelar
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={isDeletingQuote}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    handleConfirmDelete()
+                  }}
+                  className="rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold"
+                >
+                  {isDeletingQuote ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    'Confirmar Exclusão'
+                  )}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </>
       )}
     </div>
