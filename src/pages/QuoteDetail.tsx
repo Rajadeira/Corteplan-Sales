@@ -265,7 +265,10 @@ export default function QuoteDetail() {
     if (searchParams.get('print') === 'true' && quote && !loading) {
       const originalTitle = document.title
       const clientName = (quote.expand?.client?.name || 'CLIENTE').toUpperCase().trim()
-      document.title = `${clientName} - PROPOSTA ${quote.quote_number}`
+      const revSuffix = formatRevisionSuffix(quote.revision)
+      document.title = revSuffix
+        ? `${clientName} - PROPOSTA ${quote.quote_number} ${revSuffix}`
+        : `${clientName} - PROPOSTA ${quote.quote_number}`
 
       if (layoutConfig.printSettings) {
         applyDynamicPrintStyles(layoutConfig.printSettings)
@@ -1329,7 +1332,13 @@ export default function QuoteDetail() {
         onClose={() => setIsPrintModalOpen(false)}
         currentSettings={layoutConfig.printSettings}
         layoutConfig={layoutConfig}
-        documentTitle={`${(client?.name || 'CLIENTE').toUpperCase().trim()} - PROPOSTA ${quote.quote_number}`}
+        documentTitle={(() => {
+          const cName = (client?.name || 'CLIENTE').toUpperCase().trim()
+          const revSuffix = formatRevisionSuffix(quote.revision)
+          return revSuffix
+            ? `${cName} - PROPOSTA ${quote.quote_number} ${revSuffix}`
+            : `${cName} - PROPOSTA ${quote.quote_number}`
+        })()}
         onApplyAndPrint={handleApplyAndPrint}
         onSaveSettings={handleSavePrintSettings}
         isSaving={savingLayout}

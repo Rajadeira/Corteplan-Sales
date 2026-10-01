@@ -101,6 +101,23 @@ export default function Financial() {
   const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear())
   const [cashflowTypeFilter, setCashflowTypeFilter] = useState('Todos')
 
+  // Filtro de parcelas vindo da URL (ex: ?tab=fluxo&view=vencidas ou ?tab=fluxo&view=a_vencer)
+  const initialViewFilter = searchParams.get('view') || 'todas'
+  const [installmentViewFilter, setInstallmentViewFilter] = useState<
+    'todas' | 'vencidas' | 'a_vencer'
+  >(
+    initialViewFilter === 'vencidas' || initialViewFilter === 'a_vencer'
+      ? initialViewFilter
+      : 'todas',
+  )
+
+  useEffect(() => {
+    const v = searchParams.get('view')
+    if (v === 'vencidas' || v === 'a_vencer') {
+      setInstallmentViewFilter(v)
+    }
+  }, [searchParams])
+
   // Modal de Emissão de NF
   const [isEmitModalOpen, setIsEmitModalOpen] = useState(false)
   const [selectedOrderForEmit, setSelectedOrderForEmit] = useState<OrderRecord | null>(null)
@@ -437,10 +454,35 @@ export default function Financial() {
     'Dezembro',
   ]
 
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
+  const in30DaysStr = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 30)
+    return d.toISOString().split('T')[0]
+  }, [])
+
   const filteredMonthEntries = useMemo(() => {
     return cashflowEntries
       .filter((entry) => {
         if (!entry.date) return false
+
+        // Se estiver ativo um filtro global de parcelas (vencidas ou a vencer em 30 dias),
+        // ele opera em toda a base de parcelas pendentes para não limitar ao mês selecionado
+        if (installmentViewFilter === 'vencidas') {
+          const entryDate = entry.date.split('T')[0]
+          return entry.origin === 'parcela' && entry.status === 'Pendente' && entryDate < todayStr
+        }
+
+        if (installmentViewFilter === 'a_vencer') {
+          const entryDate = entry.date.split('T')[0]
+          return (
+            entry.origin === 'parcela' &&
+            entry.status === 'Pendente' &&
+            entryDate >= todayStr &&
+            entryDate <= in30DaysStr
+          )
+        }
+
         const d = new Date(entry.date + 'T00:00:00')
         return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear
       })
@@ -448,8 +490,22 @@ export default function Financial() {
         if (cashflowTypeFilter === 'Todos') return true
         return entry.type === cashflowTypeFilter
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [cashflowEntries, selectedMonth, selectedYear, cashflowTypeFilter])
+      .sort((a, b) => {
+        // Se for filtro de parcelas, ordena por vencimento crescente (mais antiga primeiro)
+        if (installmentViewFilter === 'vencidas' || installmentViewFilter === 'a_vencer') {
+          return new Date(a.date).getTime() - new Date(b.date).getTime()
+        }
+        return new Date(b.date).getTime() - new Date(a.date).getTime()
+      })
+  }, [
+    cashflowEntries,
+    selectedMonth,
+    selectedYear,
+    cashflowTypeFilter,
+    installmentViewFilter,
+    todayStr,
+    in30DaysStr,
+  ])
 
   // Métricas do mês
   const monthlyMetrics = useMemo(() => {
@@ -922,6 +978,46 @@ export default function Financial() {
             ABA 2: FLUXO DE CAIXA — ENTRADAS (PARCELAS DOS PEDIDOS), SAÍDAS, SALDO
             ========================================================================= */}
         <TabsContent value="fluxo" className="space-y-6">
+          {/* Banner de filtro ativo de parcelas vindo do Dashboard */}
+          {installmentViewFilter !== 'todas' && (
+            <div
+              className={`p-4 rounded-2xl border flex items-center justify-between gap-4 ${
+                installmentViewFilter === 'vencidas'
+                  ? 'bg-red-50 border-red-200 text-red-900'
+                  : 'bg-amber-50 border-amber-200 text-amber-900'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <AlertTriangle
+                  className={`h-5 w-5 shrink-0 ${
+                    installmentViewFilter === 'vencidas' ? 'text-red-600' : 'text-amber-600'
+                  }`}
+                />
+                <div className="text-xs sm:text-sm">
+                  <strong>Filtro ativo: </strong>
+                  {installmentViewFilter === 'vencidas'
+                    ? 'Exibindo todas as Parcelas Vencidas (Pendente com vencimento anterior a hoje).'
+                    : 'Exibindo Parcelas a Vencer nos Próximos 30 Dias (Pendente com vencimento entre hoje e 30 dias).'}
+                  <span className="block text-xs opacity-80 mt-0.5">
+                    Total filtrado: {filteredMonthEntries.length} parcela(s)
+                  </span>
+                </div>
+              </div>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setInstallmentViewFilter('todas')
+                  setSearchParams({ tab: 'fluxo' })
+                }}
+                className="shrink-0 bg-white hover:bg-slate-50 text-xs rounded-xl border-slate-300"
+              >
+                Limpar Filtro / Ver Mês
+              </Button>
+            </div>
+          )}
+
           {/* Seletor de Mês e Ano */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
             <div className="flex items-center gap-3">
@@ -929,7 +1025,13 @@ export default function Financial() {
               <div className="flex items-center gap-2">
                 <Select
                   value={String(selectedMonth)}
-                  onValueChange={(val) => setSelectedMonth(Number(val))}
+                  onValueChange={(val) => {
+                    setSelectedMonth(Number(val))
+                    if (installmentViewFilter !== 'todas') {
+                      setInstallmentViewFilter('todas')
+                      setSearchParams({ tab: 'fluxo' })
+                    }
+                  }}
                 >
                   <SelectTrigger className="w-40 text-xs font-semibold rounded-xl">
                     <SelectValue />
@@ -945,7 +1047,13 @@ export default function Financial() {
 
                 <Select
                   value={String(selectedYear)}
-                  onValueChange={(val) => setSelectedYear(Number(val))}
+                  onValueChange={(val) => {
+                    setSelectedYear(Number(val))
+                    if (installmentViewFilter !== 'todas') {
+                      setInstallmentViewFilter('todas')
+                      setSearchParams({ tab: 'fluxo' })
+                    }
+                  }}
                 >
                   <SelectTrigger className="w-28 text-xs font-semibold rounded-xl">
                     <SelectValue />

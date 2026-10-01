@@ -391,12 +391,12 @@ export function formatRevisionSuffix(rev?: number): string {
 export function formatQuoteNumber(num: number, revision?: number): string {
   const base = `ORÇ-${String(num || 0).padStart(3, '0')}`
   const rev = formatRevisionSuffix(revision)
-  return rev ? `${base} · ${rev}` : base
+  return rev ? `${base} ${rev}` : base
 }
 
 export function formatQuoteProposalTitle(num: number, revision?: number): string {
   const rev = formatRevisionSuffix(revision)
-  return rev ? `Proposta Nº ${num} - ${rev}` : `Proposta Nº ${num}`
+  return rev ? `Proposta Nº ${num} ${rev}` : `Proposta Nº ${num}`
 }
 
 export function formatOrderNumber(num: number): string {
