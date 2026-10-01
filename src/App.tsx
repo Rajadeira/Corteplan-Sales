@@ -86,6 +86,14 @@ const App = () => (
               }
             />
             <Route
+              path="/financeiro/fluxo-de-caixa"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <Navigate to="/financeiro?tab=fluxo" replace />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/configuracoes"
               element={
                 <ProtectedRoute requireAdmin>

@@ -47,9 +47,17 @@ onRecordAfterCreateSuccess((e) => {
       } catch (_) {}
     }
 
-    // Obter parcelas
-    const installments = order.get('installments')
-    if (!installments || !Array.isArray(installments) || installments.length === 0) {
+    // Obter parcelas (com suporte seguro caso venha como JSON string ou array)
+    let rawInstallments = order.get('installments')
+    if (typeof rawInstallments === 'string') {
+      try {
+        rawInstallments = JSON.parse(rawInstallments)
+      } catch (_) {
+        rawInstallments = []
+      }
+    }
+    const installments = Array.isArray(rawInstallments) ? rawInstallments : []
+    if (installments.length === 0) {
       return
     }
 
@@ -131,8 +139,16 @@ onRecordAfterUpdateSuccess((e) => {
       } catch (_) {}
     }
 
-    const installments = order.get('installments')
-    if (!installments || !Array.isArray(installments)) {
+    let rawInstallments = order.get('installments')
+    if (typeof rawInstallments === 'string') {
+      try {
+        rawInstallments = JSON.parse(rawInstallments)
+      } catch (_) {
+        rawInstallments = []
+      }
+    }
+    const installments = Array.isArray(rawInstallments) ? rawInstallments : []
+    if (installments.length === 0) {
       return
     }
 
@@ -245,8 +261,16 @@ onRecordAfterUpdateSuccess((e) => {
     const order = $app.findRecordById('orders', orderId)
     if (!order) return
 
-    const installments = order.get('installments')
-    if (!installments || !Array.isArray(installments)) return
+    let rawInstallments = order.get('installments')
+    if (typeof rawInstallments === 'string') {
+      try {
+        rawInstallments = JSON.parse(rawInstallments)
+      } catch (_) {
+        rawInstallments = []
+      }
+    }
+    const installments = Array.isArray(rawInstallments) ? rawInstallments : []
+    if (installments.length === 0) return
 
     let modified = false
     const receivedDate =
