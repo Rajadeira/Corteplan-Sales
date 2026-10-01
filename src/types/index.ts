@@ -448,9 +448,10 @@ export function calculateCommission(
 export function formatDateBR(dateStr: string): string {
   if (!dateStr) return '-'
   try {
-    // Se for formato simples YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-      const [y, m, d] = dateStr.split('-')
+    // Se vier com prefixo de data YYYY-MM-DD (com ou sem 'T' ou hora ISO / PocketBase)
+    const clean = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.trim().split(' ')[0]
+    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+      const [y, m, d] = clean.split('-')
       return `${d}/${m}/${y}`
     }
     const d = new Date(dateStr)

@@ -44,7 +44,7 @@ import {
   AlertTriangle,
   CalendarClock,
 } from 'lucide-react'
-import { formatCurrencyBRL, formatQuoteNumber, calculateCommission } from '@/types'
+import { formatCurrencyBRL, formatDateBR, formatQuoteNumber, calculateCommission } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -211,6 +211,13 @@ export default function Index() {
 
     let upcomingCount = 0
     let upcomingTotal = 0
+    let firstUpcomingDate: string | null = null
+
+    // Helper para extrair YYYY-MM-DD estritamente como string local
+    const extractLocalDateString = (dStr?: string) => {
+      if (!dStr) return ''
+      return dStr.includes('T') ? dStr.split('T')[0] : dStr.trim().split(' ')[0]
+    }
 
     // Considera apenas entradas de fluxo com origin === 'parcela' e status === 'Pendente'
     const pendingInstallments = cashflowEntries.filter(
@@ -218,7 +225,8 @@ export default function Index() {
     )
 
     pendingInstallments.forEach((entry) => {
-      const entryDate = entry.date.split('T')[0]
+      const entryDate = extractLocalDateString(entry.date)
+      if (!entryDate) return
       const amount = Number(entry.amount) || 0
 
       if (entryDate < todayStr) {
@@ -240,6 +248,10 @@ export default function Index() {
       } else if (entryDate >= todayStr && entryDate <= in30DaysStr) {
         upcomingCount += 1
         upcomingTotal += amount
+
+        if (!firstUpcomingDate || entryDate < firstUpcomingDate) {
+          firstUpcomingDate = entryDate
+        }
       }
     })
 
@@ -250,6 +262,7 @@ export default function Index() {
       oldestOverdueClient: oldestClient,
       upcomingCount,
       upcomingTotal,
+      firstUpcomingDate,
     }
   }, [cashflowEntries, isAdmin])
 
@@ -831,115 +844,143 @@ export default function Index() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Bloco 1: Parcelas Vencidas */}
-            <Link
-              to="/financeiro?tab=fluxo&view=vencidas"
-              className="group block p-5 rounded-2xl border border-red-200 bg-gradient-to-br from-red-50/70 via-red-50/30 to-white hover:border-red-400 hover:shadow-md transition-all duration-200"
-            >
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="p-2 rounded-xl bg-red-100 text-red-700 group-hover:bg-red-200 transition-colors">
-                      <AlertTriangle className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <h4 className="text-sm font-bold text-red-950">Parcelas Vencidas</h4>
-                      <p className="text-xs text-red-700/80">
-                        Pendentes com vencimento anterior a hoje
-                      </p>
-                    </div>
-                  </div>
-                </div>
+            {(() => {
+              // Posiciona no mês da parcela vencida mais antiga ou no mês atual
+              let overdueTargetUrl = '/financeiro?tab=fluxo&view=vencidas'
+              if (installmentsSummary.oldestOverdueDate) {
+                const parts = installmentsSummary.oldestOverdueDate.split('-')
+                if (parts.length === 3) {
+                  const y = parts[0]
+                  const m = parseInt(parts[1], 10) - 1
+                  overdueTargetUrl = `/financeiro?tab=fluxo&view=vencidas&month=${m}&year=${y}`
+                }
+              }
 
-                <Badge
-                  variant="outline"
-                  className="bg-white/80 text-red-700 border-red-300 font-mono font-bold text-xs"
+              return (
+                <Link
+                  to={overdueTargetUrl}
+                  className="group block p-5 rounded-2xl border border-red-200 bg-gradient-to-br from-red-50/70 via-red-50/30 to-white hover:border-red-400 hover:shadow-md transition-all duration-200"
                 >
-                  {installmentsSummary.overdueCount}{' '}
-                  {installmentsSummary.overdueCount === 1 ? 'parcela' : 'parcelas'}
-                </Badge>
-              </div>
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="p-2 rounded-xl bg-red-100 text-red-700 group-hover:bg-red-200 transition-colors">
+                          <AlertTriangle className="h-5 w-5" />
+                        </span>
+                        <div>
+                          <h4 className="text-sm font-bold text-red-950">Parcelas Vencidas</h4>
+                          <p className="text-xs text-red-700/80">
+                            Pendentes com vencimento anterior a hoje
+                          </p>
+                        </div>
+                      </div>
+                    </div>
 
-              <div className="mt-4 pt-3 border-t border-red-200/60 flex items-baseline justify-between">
-                <div>
-                  <span className="text-[11px] font-medium text-red-800 uppercase tracking-wider block">
-                    Valor total em atraso
-                  </span>
-                  <span className="font-mono text-2xl font-black text-red-700">
-                    {formatCurrencyBRL(installmentsSummary.overdueTotal)}
-                  </span>
-                </div>
+                    <Badge
+                      variant="outline"
+                      className="bg-white/80 text-red-700 border-red-300 font-mono font-bold text-xs"
+                    >
+                      {installmentsSummary.overdueCount}{' '}
+                      {installmentsSummary.overdueCount === 1 ? 'parcela' : 'parcelas'}
+                    </Badge>
+                  </div>
 
-                <div className="text-right">
-                  {installmentsSummary.oldestOverdueDate ? (
-                    <div className="text-[11px] text-red-900/90">
-                      <span className="text-red-600/90 font-medium block">Mais antiga:</span>
-                      <span className="font-bold">
-                        {new Date(
-                          installmentsSummary.oldestOverdueDate + 'T00:00:00',
-                        ).toLocaleDateString('pt-BR')}
+                  <div className="mt-4 pt-3 border-t border-red-200/60 flex items-baseline justify-between">
+                    <div>
+                      <span className="text-[11px] font-medium text-red-800 uppercase tracking-wider block">
+                        Valor total em atraso
                       </span>
-                      {installmentsSummary.oldestOverdueClient && (
-                        <span className="block text-[10px] text-red-700 truncate max-w-[140px]">
-                          {installmentsSummary.oldestOverdueClient}
+                      <span className="font-mono text-2xl font-black text-red-700">
+                        {formatCurrencyBRL(installmentsSummary.overdueTotal)}
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      {installmentsSummary.oldestOverdueDate ? (
+                        <div className="text-[11px] text-red-900/90">
+                          <span className="text-red-600/90 font-medium block">Mais antiga:</span>
+                          <span className="font-bold">
+                            {formatDateBR(installmentsSummary.oldestOverdueDate)}
+                          </span>
+                          {installmentsSummary.oldestOverdueClient && (
+                            <span className="block text-[10px] text-red-700 truncate max-w-[140px]">
+                              {installmentsSummary.oldestOverdueClient}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1">
+                          <CheckCircle className="h-4 w-4" /> Nenhuma parcela vencida
                         </span>
                       )}
                     </div>
-                  ) : (
-                    <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1">
-                      <CheckCircle className="h-4 w-4" /> Nenhuma parcela vencida
-                    </span>
-                  )}
-                </div>
-              </div>
-            </Link>
+                  </div>
+                </Link>
+              )
+            })()}
 
             {/* Bloco 2: Parcelas a Vencer (30 dias) */}
-            <Link
-              to="/financeiro?tab=fluxo&view=a_vencer"
-              className="group block p-5 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50/70 via-amber-50/30 to-white hover:border-amber-400 hover:shadow-md transition-all duration-200"
-            >
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="p-2 rounded-xl bg-amber-100 text-amber-700 group-hover:bg-amber-200 transition-colors">
-                      <CalendarClock className="h-5 w-5" />
-                    </span>
+            {(() => {
+              // Posiciona no mês da primeira parcela a vencer ou no mês atual
+              let upcomingTargetUrl = `/financeiro?tab=fluxo&view=a_vencer&month=${now.getMonth()}&year=${now.getFullYear()}`
+              if (installmentsSummary.firstUpcomingDate) {
+                const parts = installmentsSummary.firstUpcomingDate.split('-')
+                if (parts.length === 3) {
+                  const y = parts[0]
+                  const m = parseInt(parts[1], 10) - 1
+                  upcomingTargetUrl = `/financeiro?tab=fluxo&view=a_vencer&month=${m}&year=${y}`
+                }
+              }
+
+              return (
+                <Link
+                  to={upcomingTargetUrl}
+                  className="group block p-5 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50/70 via-amber-50/30 to-white hover:border-amber-400 hover:shadow-md transition-all duration-200"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="p-2 rounded-xl bg-amber-100 text-amber-700 group-hover:bg-amber-200 transition-colors">
+                          <CalendarClock className="h-5 w-5" />
+                        </span>
+                        <div>
+                          <h4 className="text-sm font-bold text-amber-950">
+                            Parcelas a Vencer (30 dias)
+                          </h4>
+                          <p className="text-xs text-amber-700/80">
+                            Recebimentos previstos para o próximo mês
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Badge
+                      variant="outline"
+                      className="bg-white/80 text-amber-800 border-amber-300 font-mono font-bold text-xs"
+                    >
+                      {installmentsSummary.upcomingCount}{' '}
+                      {installmentsSummary.upcomingCount === 1 ? 'parcela' : 'parcelas'}
+                    </Badge>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-amber-200/60 flex items-baseline justify-between">
                     <div>
-                      <h4 className="text-sm font-bold text-amber-950">
-                        Parcelas a Vencer (30 dias)
-                      </h4>
-                      <p className="text-xs text-amber-700/80">
-                        Recebimentos previstos para o próximo mês
-                      </p>
+                      <span className="text-[11px] font-medium text-amber-800 uppercase tracking-wider block">
+                        Previsão a receber
+                      </span>
+                      <span className="font-mono text-2xl font-black text-amber-700">
+                        {formatCurrencyBRL(installmentsSummary.upcomingTotal)}
+                      </span>
+                    </div>
+
+                    <div className="text-right text-xs text-amber-900/80 font-medium group-hover:text-amber-950 flex items-center gap-1">
+                      <span>Filtrar no fluxo</span>
+                      <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                     </div>
                   </div>
-                </div>
-
-                <Badge
-                  variant="outline"
-                  className="bg-white/80 text-amber-800 border-amber-300 font-mono font-bold text-xs"
-                >
-                  {installmentsSummary.upcomingCount}{' '}
-                  {installmentsSummary.upcomingCount === 1 ? 'parcela' : 'parcelas'}
-                </Badge>
-              </div>
-
-              <div className="mt-4 pt-3 border-t border-amber-200/60 flex items-baseline justify-between">
-                <div>
-                  <span className="text-[11px] font-medium text-amber-800 uppercase tracking-wider block">
-                    Previsão a receber
-                  </span>
-                  <span className="font-mono text-2xl font-black text-amber-700">
-                    {formatCurrencyBRL(installmentsSummary.upcomingTotal)}
-                  </span>
-                </div>
-
-                <div className="text-right text-xs text-amber-900/80 font-medium group-hover:text-amber-950 flex items-center gap-1">
-                  <span>Filtrar no fluxo</span>
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                </div>
-              </div>
-            </Link>
+                </Link>
+              )
+            })()}
           </div>
         </div>
       )}

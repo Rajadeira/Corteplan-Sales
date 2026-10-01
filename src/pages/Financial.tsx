@@ -18,6 +18,7 @@ import {
   Search,
   Filter,
   Check,
+  ChevronLeft,
   ChevronRight,
   ShieldAlert,
   ArrowUpRight,
@@ -97,9 +98,22 @@ export default function Financial() {
 
   // Seletor de mês e ano do Fluxo de Caixa
   const currentDate = new Date()
-  const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth())
-  const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear())
+  const urlMonthParam = searchParams.get('month')
+  const urlYearParam = searchParams.get('year')
+  const initialMonth =
+    urlMonthParam !== null && !isNaN(Number(urlMonthParam))
+      ? Math.max(0, Math.min(11, Number(urlMonthParam)))
+      : currentDate.getMonth()
+  const initialYear =
+    urlYearParam !== null && !isNaN(Number(urlYearParam))
+      ? Number(urlYearParam)
+      : currentDate.getFullYear()
+
+  const [selectedMonth, setSelectedMonth] = useState<number>(initialMonth)
+  const [selectedYear, setSelectedYear] = useState<number>(initialYear)
   const [cashflowTypeFilter, setCashflowTypeFilter] = useState('Todos')
+  const [cashflowSearch, setCashflowSearch] = useState('')
+  const [viewAllCashflow, setViewAllCashflow] = useState(false)
 
   // Filtro de parcelas vindo da URL (ex: ?tab=fluxo&view=vencidas ou ?tab=fluxo&view=a_vencer)
   const initialViewFilter = searchParams.get('view') || 'todas'
@@ -115,6 +129,21 @@ export default function Financial() {
     const v = searchParams.get('view')
     if (v === 'vencidas' || v === 'a_vencer') {
       setInstallmentViewFilter(v)
+    } else if (v === 'todas') {
+      setInstallmentViewFilter('todas')
+    }
+
+    const m = searchParams.get('month')
+    if (m !== null && !isNaN(Number(m))) {
+      setSelectedMonth(Math.max(0, Math.min(11, Number(m))))
+    }
+    const y = searchParams.get('year')
+    if (y !== null && !isNaN(Number(y))) {
+      setSelectedYear(Number(y))
+    }
+    const q = searchParams.get('q')
+    if (q !== null) {
+      setCashflowSearch(q)
     }
   }, [searchParams])
 
@@ -461,20 +490,124 @@ export default function Financial() {
     return d.toISOString().split('T')[0]
   }, [])
 
+  /**
+   * Helper para interpretar a competência/data do lançamento estritamente
+   * em horário local, evitando que fusos UTC/fuso horário do navegador
+   * desloquem o mês (ex: 2026-09-30 23:42:13Z caindo em outubro ou setembro de forma incorreta).
+   */
+  const parseEntryLocalDate = (dateStr?: string) => {
+    if (!dateStr) return null
+    const clean = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.trim().split(' ')[0]
+    const match = clean.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (match) {
+      const year = parseInt(match[1], 10)
+      const month = parseInt(match[2], 10) - 1 // 0-based
+      const day = parseInt(match[3], 10)
+      return { year, month, day, dateOnly: clean }
+    }
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return null
+    return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate(), dateOnly: clean }
+  }
+
+  // Navegação de meses
+  const handlePrevMonth = () => {
+    if (selectedMonth === 0) {
+      setSelectedMonth(11)
+      setSelectedYear((y) => y - 1)
+    } else {
+      setSelectedMonth((m) => m - 1)
+    }
+    if (installmentViewFilter !== 'todas') {
+      setInstallmentViewFilter('todas')
+      setSearchParams({ tab: 'fluxo' })
+    }
+  }
+
+  const handleNextMonth = () => {
+    if (selectedMonth === 11) {
+      setSelectedMonth(0)
+      setSelectedYear((y) => y + 1)
+    } else {
+      setSelectedMonth((m) => m + 1)
+    }
+    if (installmentViewFilter !== 'todas') {
+      setInstallmentViewFilter('todas')
+      setSearchParams({ tab: 'fluxo' })
+    }
+  }
+
+  const handleGoToToday = () => {
+    const now = new Date()
+    setSelectedMonth(now.getMonth())
+    setSelectedYear(now.getFullYear())
+    if (installmentViewFilter !== 'todas') {
+      setInstallmentViewFilter('todas')
+      setSearchParams({ tab: 'fluxo' })
+    }
+  }
+
+  const isCurrentMonthView = useMemo(() => {
+    const now = new Date()
+    return selectedMonth === now.getMonth() && selectedYear === now.getFullYear()
+  }, [selectedMonth, selectedYear])
+
   const filteredMonthEntries = useMemo(() => {
+    const cleanSearch = cashflowSearch.toLowerCase().trim()
+
     return cashflowEntries
       .filter((entry) => {
         if (!entry.date) return false
+        const parsed = parseEntryLocalDate(entry.date)
+        if (!parsed) return false
+        const entryDate = parsed.dateOnly
+
+        // Se houver termo de busca, verifica se o lançamento bate com o termo
+        if (cleanSearch) {
+          const desc = (entry.description || '').toLowerCase()
+          const cat = (entry.category || '').toLowerCase()
+          const notes = (entry.notes || '').toLowerCase()
+          const amountStr = String(entry.amount || '')
+          const formattedAmount = formatCurrencyBRL(entry.amount || 0).toLowerCase()
+          const orderNumber = entry.expand?.order?.order_number
+            ? String(entry.expand.order.order_number).toLowerCase()
+            : ''
+          const clientName = (entry.expand?.order?.expand?.client?.name || '').toLowerCase()
+
+          const matchesSearch =
+            desc.includes(cleanSearch) ||
+            cat.includes(cleanSearch) ||
+            notes.includes(cleanSearch) ||
+            amountStr.includes(cleanSearch) ||
+            formattedAmount.includes(cleanSearch) ||
+            orderNumber.includes(cleanSearch) ||
+            clientName.includes(cleanSearch)
+
+          if (!matchesSearch) return false
+
+          // Quando há busca livre (ex: "NUOVA", "PED-001"), ela busca em toda a base de lançamentos
+          // ignorando a restrição mensal para permitir localizar parcelas de qualquer competência
+          if (cashflowTypeFilter !== 'Todos' && entry.type !== cashflowTypeFilter) {
+            return false
+          }
+          return true
+        }
+
+        // Se modo "Ver Todos os Lançamentos" estiver ligado (e sem filtro de parcelas específico)
+        if (viewAllCashflow && installmentViewFilter === 'todas') {
+          if (cashflowTypeFilter !== 'Todos' && entry.type !== cashflowTypeFilter) {
+            return false
+          }
+          return true
+        }
 
         // Se estiver ativo um filtro global de parcelas (vencidas ou a vencer em 30 dias),
         // ele opera em toda a base de parcelas pendentes para não limitar ao mês selecionado
         if (installmentViewFilter === 'vencidas') {
-          const entryDate = entry.date.split('T')[0]
           return entry.origin === 'parcela' && entry.status === 'Pendente' && entryDate < todayStr
         }
 
         if (installmentViewFilter === 'a_vencer') {
-          const entryDate = entry.date.split('T')[0]
           return (
             entry.origin === 'parcela' &&
             entry.status === 'Pendente' &&
@@ -483,8 +616,8 @@ export default function Financial() {
           )
         }
 
-        const d = new Date(entry.date + 'T00:00:00')
-        return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear
+        // Visão mensal padrão: compara ano e mês calculados estritamente na data local
+        return parsed.month === selectedMonth && parsed.year === selectedYear
       })
       .filter((entry) => {
         if (cashflowTypeFilter === 'Todos') return true
@@ -493,9 +626,9 @@ export default function Financial() {
       .sort((a, b) => {
         // Se for filtro de parcelas, ordena por vencimento crescente (mais antiga primeiro)
         if (installmentViewFilter === 'vencidas' || installmentViewFilter === 'a_vencer') {
-          return new Date(a.date).getTime() - new Date(b.date).getTime()
+          return (a.date || '').localeCompare(b.date || '')
         }
-        return new Date(b.date).getTime() - new Date(a.date).getTime()
+        return (b.date || '').localeCompare(a.date || '')
       })
   }, [
     cashflowEntries,
@@ -505,9 +638,11 @@ export default function Financial() {
     installmentViewFilter,
     todayStr,
     in30DaysStr,
+    cashflowSearch,
+    viewAllCashflow,
   ])
 
-  // Métricas do mês
+  // Métricas do mês (considera a competência mensal estritamente local)
   const monthlyMetrics = useMemo(() => {
     let totalIncomes = 0
     let totalExpenses = 0
@@ -516,8 +651,10 @@ export default function Financial() {
 
     cashflowEntries.forEach((entry) => {
       if (!entry.date) return
-      const d = new Date(entry.date + 'T00:00:00')
-      if (d.getMonth() === selectedMonth && d.getFullYear() === selectedYear) {
+      const parsed = parseEntryLocalDate(entry.date)
+      if (!parsed) return
+
+      if (parsed.month === selectedMonth && parsed.year === selectedYear) {
         if (entry.type === 'Entrada') {
           totalIncomes += entry.amount || 0
           if (entry.status === 'Realizado') {
@@ -556,9 +693,11 @@ export default function Financial() {
 
     cashflowEntries.forEach((entry) => {
       if (!entry.date) return
-      const d = new Date(entry.date + 'T00:00:00')
-      if (d.getMonth() === selectedMonth && d.getFullYear() === selectedYear) {
-        const day = d.getDate()
+      const parsed = parseEntryLocalDate(entry.date)
+      if (!parsed) return
+
+      if (parsed.month === selectedMonth && parsed.year === selectedYear) {
+        const day = parsed.day
         const current = daysMap.get(day)
         if (current) {
           if (entry.type === 'Entrada') {
@@ -1018,69 +1157,161 @@ export default function Financial() {
             </div>
           )}
 
-          {/* Seletor de Mês e Ano */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-            <div className="flex items-center gap-3">
-              <Calendar className="h-5 w-5 text-[#F08A24]" />
-              <div className="flex items-center gap-2">
-                <Select
-                  value={String(selectedMonth)}
-                  onValueChange={(val) => {
-                    setSelectedMonth(Number(val))
-                    if (installmentViewFilter !== 'todas') {
-                      setInstallmentViewFilter('todas')
-                      setSearchParams({ tab: 'fluxo' })
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-40 text-xs font-semibold rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {monthNames.map((name, idx) => (
-                      <SelectItem key={idx} value={String(idx)}>
-                        {name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          {/* Barra de Filtros, Busca e Navegação Rápida de Meses */}
+          <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+            {/* Linha 1: Navegação de Mês/Ano + Botões de Atalho */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex items-center flex-wrap gap-2 sm:gap-3">
+                <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handlePrevMonth}
+                    title="Mês anterior"
+                    className="h-8 w-8 p-0 rounded-lg hover:bg-white text-slate-700"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
 
-                <Select
-                  value={String(selectedYear)}
-                  onValueChange={(val) => {
-                    setSelectedYear(Number(val))
-                    if (installmentViewFilter !== 'todas') {
-                      setInstallmentViewFilter('todas')
-                      setSearchParams({ tab: 'fluxo' })
-                    }
-                  }}
+                  <div className="flex items-center gap-1.5 px-1">
+                    <Select
+                      value={String(selectedMonth)}
+                      onValueChange={(val) => {
+                        setSelectedMonth(Number(val))
+                        if (installmentViewFilter !== 'todas') {
+                          setInstallmentViewFilter('todas')
+                          setSearchParams({ tab: 'fluxo' })
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-36 h-8 text-xs font-semibold rounded-lg bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {monthNames.map((name, idx) => (
+                          <SelectItem key={idx} value={String(idx)}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select
+                      value={String(selectedYear)}
+                      onValueChange={(val) => {
+                        setSelectedYear(Number(val))
+                        if (installmentViewFilter !== 'todas') {
+                          setInstallmentViewFilter('todas')
+                          setSearchParams({ tab: 'fluxo' })
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-24 h-8 text-xs font-semibold rounded-lg bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[2024, 2025, 2026, 2027, 2028].map((yr) => (
+                          <SelectItem key={yr} value={String(yr)}>
+                            {yr}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleNextMonth}
+                    title="Próximo mês"
+                    className="h-8 w-8 p-0 rounded-lg hover:bg-white text-slate-700"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Atalho "Ir para hoje" quando em mês distante */}
+                {!isCurrentMonthView && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleGoToToday}
+                    className="h-8 text-xs rounded-xl border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 font-medium"
+                  >
+                    <Calendar className="h-3.5 w-3.5 mr-1 text-[#E66812]" />
+                    Ir para hoje
+                  </Button>
+                )}
+
+                {/* Alternador de Modo: Mensal vs Todos os Lançamentos */}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={viewAllCashflow ? 'default' : 'outline'}
+                  onClick={() => setViewAllCashflow((prev) => !prev)}
+                  className={`h-8 text-xs rounded-xl font-medium ${
+                    viewAllCashflow
+                      ? 'bg-[#3A3A3C] hover:bg-[#2D2D2F] text-white'
+                      : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
                 >
-                  <SelectTrigger className="w-28 text-xs font-semibold rounded-xl">
+                  {viewAllCashflow ? 'Visão: Todos os Lançamentos' : 'Ver Todos os Lançamentos'}
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 font-medium">Tipo:</span>
+                <Select value={cashflowTypeFilter} onValueChange={setCashflowTypeFilter}>
+                  <SelectTrigger className="w-36 h-8 text-xs rounded-xl">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[2024, 2025, 2026, 2027].map((yr) => (
-                      <SelectItem key={yr} value={String(yr)}>
-                        {yr}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="Todos">Todos os Tipos</SelectItem>
+                    <SelectItem value="Entrada">Apenas Entradas</SelectItem>
+                    <SelectItem value="Saída">Apenas Saídas</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-medium">Filtrar:</span>
-              <Select value={cashflowTypeFilter} onValueChange={setCashflowTypeFilter}>
-                <SelectTrigger className="w-36 text-xs rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Todos">Todos os Tipos</SelectItem>
-                  <SelectItem value="Entrada">Apenas Entradas</SelectItem>
-                  <SelectItem value="Saída">Apenas Saídas</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Linha 2: Campo de busca livre no Fluxo de Caixa */}
+            <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder="Buscar parcelas por cliente (ex: NUOVA), pedido (ex: PED-001) ou valor..."
+                  value={cashflowSearch}
+                  onChange={(e) => setCashflowSearch(e.target.value)}
+                  className="pl-9 h-9 text-xs sm:text-sm rounded-xl"
+                />
+              </div>
+
+              {cashflowSearch && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">
+                    Filtro de busca ativo:{' '}
+                    <strong className="text-slate-800 font-mono">"{cashflowSearch}"</strong>
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setCashflowSearch('')
+                      const p = new URLSearchParams(searchParams)
+                      p.delete('q')
+                      setSearchParams(p)
+                    }}
+                    className="h-7 text-xs text-slate-500 hover:text-slate-900 rounded-lg"
+                  >
+                    Limpar
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1229,14 +1460,28 @@ export default function Financial() {
             </div>
           </div>
 
-          {/* Tabela de Lançamentos do Mês */}
+          {/* Tabela de Lançamentos do Mês ou Busca */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5 text-[#F08A24]" />
                 <h3 className="font-bold text-sm text-slate-900">
-                  Lançamentos de {monthNames[selectedMonth]} de {selectedYear}
+                  {viewAllCashflow
+                    ? 'Todos os Lançamentos do Fluxo de Caixa'
+                    : installmentViewFilter === 'vencidas'
+                      ? 'Parcelas Vencidas'
+                      : installmentViewFilter === 'a_vencer'
+                        ? 'Parcelas a Vencer (30 dias)'
+                        : `Lançamentos de ${monthNames[selectedMonth]} de ${selectedYear}`}
                 </h3>
+                {cashflowSearch && (
+                  <Badge
+                    variant="outline"
+                    className="bg-amber-50 text-amber-800 border-amber-300 text-[11px]"
+                  >
+                    Busca: "{cashflowSearch}"
+                  </Badge>
+                )}
               </div>
               <span className="text-xs text-slate-500">
                 {filteredMonthEntries.length} lançamento(s)
@@ -1247,7 +1492,7 @@ export default function Financial() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold">
-                    <th className="py-3 px-4">Data</th>
+                    <th className="py-3 px-4">Data Venc./Comp.</th>
                     <th className="py-3 px-4">Tipo</th>
                     <th className="py-3 px-4">Descrição</th>
                     <th className="py-3 px-4">Categoria / Origem</th>
@@ -1260,7 +1505,9 @@ export default function Financial() {
                   {filteredMonthEntries.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-12 text-center text-slate-400">
-                        Nenhum lançamento registrado neste mês.
+                        {cashflowSearch
+                          ? `Nenhum lançamento encontrado para a busca "${cashflowSearch}". Experimente ligar o modo "Ver Todos os Lançamentos".`
+                          : 'Nenhum lançamento registrado neste período.'}
                       </td>
                     </tr>
                   ) : (
