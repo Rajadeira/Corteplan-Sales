@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-25T21:49:07.268Z",
+  "generatedAt": "2026-10-01T17:14:35.592Z",
   "collections": [
     {
       "name": "users",
@@ -29,21 +29,29 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "role",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["Administrador", "Vendedor"]
+          "selectValues": [
+            "Administrador",
+            "Vendedor"
+          ]
         }
       ],
       "indexes": [
@@ -109,21 +117,29 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "document_type",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["CNPJ", "CPF"]
+          "selectValues": [
+            "CNPJ",
+            "CPF"
+          ]
         },
         {
           "name": "document_number",
@@ -220,7 +236,12 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Rascunho", "Enviado", "Aprovado", "Rejeitado"]
+          "selectValues": [
+            "Rascunho",
+            "Enviado",
+            "Aprovado",
+            "Rejeitado"
+          ]
         },
         {
           "name": "observations",
@@ -239,14 +260,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "icms",
@@ -425,7 +451,12 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Aberto", "Em Produção", "Concluído", "Cancelado"]
+          "selectValues": [
+            "Aberto",
+            "Em Produção",
+            "Concluído",
+            "Cancelado"
+          ]
         },
         {
           "name": "observations",
@@ -523,14 +554,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "quote_revision",
@@ -597,7 +633,13 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["un", "m²", "m", "kit", "hora"]
+          "selectValues": [
+            "un",
+            "m²",
+            "m",
+            "kit",
+            "hora"
+          ]
         },
         {
           "name": "unit_price",
@@ -641,14 +683,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": []
@@ -687,14 +734,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": []
@@ -753,14 +805,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -797,7 +854,13 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Ligação", "WhatsApp", "E-mail", "Reunião", "Outros"]
+          "selectValues": [
+            "Ligação",
+            "WhatsApp",
+            "E-mail",
+            "Reunião",
+            "Outros"
+          ]
         },
         {
           "name": "notes",
@@ -823,14 +886,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -873,7 +941,12 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Aguardando Emissão", "Emitida", "Cancelada", "Erro"]
+          "selectValues": [
+            "Aguardando Emissão",
+            "Emitida",
+            "Cancelada",
+            "Erro"
+          ]
         },
         {
           "name": "provider",
@@ -966,14 +1039,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -998,7 +1076,10 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Entrada", "Saída"]
+          "selectValues": [
+            "Entrada",
+            "Saída"
+          ]
         },
         {
           "name": "date",
@@ -1029,14 +1110,20 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["manual", "parcela"]
+          "selectValues": [
+            "manual",
+            "parcela"
+          ]
         },
         {
           "name": "status",
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Pendente", "Realizado"]
+          "selectValues": [
+            "Pendente",
+            "Realizado"
+          ]
         },
         {
           "name": "order",
@@ -1074,14 +1161,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
