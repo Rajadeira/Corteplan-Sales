@@ -1,14 +1,20 @@
-import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useState, useEffect, useMemo } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Users,
   FileText,
   CheckCircle,
   DollarSign,
   TrendingUp,
+  TrendingDown,
   ArrowRight,
   Plus,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  CalendarDays,
+  Percent,
 } from 'lucide-react'
 import {
   BarChart,
@@ -49,12 +55,134 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Award, Lock, ShieldCheck } from 'lucide-react'
 import { canViewValues } from '@/lib/permissions'
+
+// Nomes completos e abreviados dos meses em PT-BR
+const monthFullNames = [
+  'Janeiro',
+  'Fevereiro',
+  'Março',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
+  'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro',
+]
+
+const monthShortNames = [
+  'Jan',
+  'Fev',
+  'Mar',
+  'Abr',
+  'Mai',
+  'Jun',
+  'Jul',
+  'Ago',
+  'Set',
+  'Out',
+  'Nov',
+  'Dez',
+]
+
+/**
+ * Helper para interpretar a data do registro estritamente em horário local,
+ * evitando que desvios de timezone alterem mês/ano de competência.
+ */
+function parseLocalDate(dateStr?: string) {
+  if (!dateStr) return null
+  const clean = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.trim().split(' ')[0]
+  const match = clean.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (match) {
+    const year = parseInt(match[1], 10)
+    const month = parseInt(match[2], 10) - 1 // 0-based
+    const day = parseInt(match[3], 10)
+    return { year, month, day, dateOnly: clean }
+  }
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return null
+  return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate(), dateOnly: clean }
+}
 
 export default function Index() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'Administrador'
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Sincronização de competência com URL searchParams (?month=8&year=2025)
+  const currentDate = useMemo(() => new Date(), [])
+  const currentMonth = currentDate.getMonth()
+  const currentYear = currentDate.getFullYear()
+
+  const urlMonthParam = searchParams.get('month')
+  const urlYearParam = searchParams.get('year')
+
+  const initialMonth =
+    urlMonthParam !== null && !isNaN(Number(urlMonthParam))
+      ? Math.max(0, Math.min(11, Number(urlMonthParam)))
+      : currentMonth
+  const initialYear =
+    urlYearParam !== null && !isNaN(Number(urlYearParam)) ? Number(urlYearParam) : currentYear
+
+  const [selectedMonth, setSelectedMonth] = useState<number>(initialMonth)
+  const [selectedYear, setSelectedYear] = useState<number>(initialYear)
+
+  // Atualiza estado quando URL mudar
+  useEffect(() => {
+    const m = searchParams.get('month')
+    if (m !== null && !isNaN(Number(m))) {
+      setSelectedMonth(Math.max(0, Math.min(11, Number(m))))
+    }
+    const y = searchParams.get('year')
+    if (y !== null && !isNaN(Number(y))) {
+      setSelectedYear(Number(y))
+    }
+  }, [searchParams])
+
+  // Helper para trocar competência e persistir na URL
+  const updateCompetency = (m: number, y: number) => {
+    setSelectedMonth(m)
+    setSelectedYear(y)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('month', String(m))
+    nextParams.set('year', String(y))
+    setSearchParams(nextParams)
+  }
+
+  const handlePrevMonth = () => {
+    if (selectedMonth === 0) {
+      updateCompetency(11, selectedYear - 1)
+    } else {
+      updateCompetency(selectedMonth - 1, selectedYear)
+    }
+  }
+
+  const handleNextMonth = () => {
+    if (selectedMonth === 11) {
+      updateCompetency(0, selectedYear + 1)
+    } else {
+      updateCompetency(selectedMonth + 1, selectedYear)
+    }
+  }
+
+  const handleGoToToday = () => {
+    const now = new Date()
+    updateCompetency(now.getMonth(), now.getFullYear())
+  }
+
+  const isCurrentMonthView = selectedMonth === currentMonth && selectedYear === currentYear
+
   const [clients, setClients] = useState<ClientRecord[]>([])
   const [quotes, setQuotes] = useState<QuoteRecord[]>([])
   const [orders, setOrders] = useState<OrderRecord[]>([])
@@ -266,86 +394,207 @@ export default function Index() {
     }
   }, [cashflowEntries, isAdmin])
 
-  const totalClients = clients.length
-  const totalQuotes = quotes.length
-  const approvedQuotes = quotes.filter((q) => q.status === 'Aprovado')
-  const totalApprovedQuotes = approvedQuotes.length
-  const totalApprovedValue = approvedQuotes.reduce((sum, q) => sum + (q.total || 0), 0)
-
-  // Gráfico dos últimos 6 meses
-  const monthNames = [
-    'Jan',
-    'Fev',
-    'Mar',
-    'Abr',
-    'Mai',
-    'Jun',
-    'Jul',
-    'Ago',
-    'Set',
-    'Out',
-    'Nov',
-    'Dez',
-  ]
-  const now = new Date()
-  const monthlyData: { name: string; count: number; total: number; isCurrentMonth: boolean }[] = []
-
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const monthIndex = d.getMonth()
-    const year = d.getFullYear()
-    const label = `${monthNames[monthIndex]}`
-
-    // Count quotes created in that month
-    const matching = quotes.filter((q) => {
-      const qDate = new Date(q.created)
-      return qDate.getMonth() === monthIndex && qDate.getFullYear() === year
-    })
-
-    const monthTotal = matching.reduce((acc, curr) => acc + (curr.total || 0), 0)
-
-    monthlyData.push({
-      name: label,
-      count: matching.length,
-      total: monthTotal,
-      isCurrentMonth: i === 0,
-    })
-  }
-
-  // 5 orçamentos recentes
-  const recentQuotes = [...quotes].slice(0, 5)
-
-  // 5 clientes recentes
-  const recentClients = [...clients].slice(0, 5)
+  // Anos disponíveis para seleção (do histórico até futuro próximo)
+  const availableYears = useMemo(() => {
+    const list = [2023, 2024, 2025, 2026, 2027, 2028]
+    if (!list.includes(selectedYear)) {
+      list.push(selectedYear)
+      list.sort((a, b) => a - b)
+    }
+    return list
+  }, [selectedYear])
 
   // =========================================================================
-  // CÁLCULO DAS COMISSÕES DO MÊS ATUAL POR VENDEDOR
+  // FILTRAGEM MENSAL (COMPETÊNCIA SELECIONADA: selectedMonth / selectedYear)
+  // E CÁLCULO COMPARATIVO VS. MÊS ANTERIOR (MoM - Month over Month)
+  // =========================================================================
+
+  // Mês anterior (para variação % e indicadores de tendência)
+  const prevMonthIndex = selectedMonth === 0 ? 11 : selectedMonth - 1
+  const prevMonthYear = selectedMonth === 0 ? selectedYear - 1 : selectedYear
+
+  // Orçamentos criados no mês selecionado
+  const selectedMonthQuotes = useMemo(() => {
+    return quotes.filter((q) => {
+      const parsed = parseLocalDate(q.created)
+      return parsed && parsed.month === selectedMonth && parsed.year === selectedYear
+    })
+  }, [quotes, selectedMonth, selectedYear])
+
+  // Orçamentos criados no mês anterior (para comparação MoM)
+  const prevMonthQuotes = useMemo(() => {
+    return quotes.filter((q) => {
+      const parsed = parseLocalDate(q.created)
+      return parsed && parsed.month === prevMonthIndex && parsed.year === prevMonthYear
+    })
+  }, [quotes, prevMonthIndex, prevMonthYear])
+
+  // Clientes cadastrados até o final da competência selecionada
+  // (e novos clientes cadastrados especificamente no mês selecionado)
+  const clientsCreatedInSelectedMonth = useMemo(() => {
+    return clients.filter((c) => {
+      const parsed = parseLocalDate(c.created)
+      return parsed && parsed.month === selectedMonth && parsed.year === selectedYear
+    })
+  }, [clients, selectedMonth, selectedYear])
+
+  const clientsCreatedInPrevMonth = useMemo(() => {
+    return clients.filter((c) => {
+      const parsed = parseLocalDate(c.created)
+      return parsed && parsed.month === prevMonthIndex && parsed.year === prevMonthYear
+    })
+  }, [clients, prevMonthIndex, prevMonthYear])
+
+  // Base cumulativa de clientes até o final da competência selecionada
+  const cumulativeClientsUntilPeriod = useMemo(() => {
+    // Ano/Mês no formato YYYY-MM
+    const periodKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`
+    return clients.filter((c) => {
+      const parsed = parseLocalDate(c.created)
+      if (!parsed) return true // Se sem data, assume cliente na base
+      const itemKey = `${parsed.year}-${String(parsed.month + 1).padStart(2, '0')}`
+      return itemKey <= periodKey
+    })
+  }, [clients, selectedMonth, selectedYear])
+
+  // Métricas do Mês Selecionado
+  const totalQuotesPeriod = selectedMonthQuotes.length
+  const approvedQuotesPeriod = useMemo(
+    () => selectedMonthQuotes.filter((q) => q.status === 'Aprovado'),
+    [selectedMonthQuotes],
+  )
+  const totalApprovedQuotesPeriod = approvedQuotesPeriod.length
+  const totalApprovedValuePeriod = useMemo(
+    () => approvedQuotesPeriod.reduce((sum, q) => sum + (q.total || 0), 0),
+    [approvedQuotesPeriod],
+  )
+  const conversionRatePeriod =
+    totalQuotesPeriod > 0 ? Math.round((totalApprovedQuotesPeriod / totalQuotesPeriod) * 100) : 0
+
+  // Métricas do Mês Anterior (MoM)
+  const prevTotalQuotes = prevMonthQuotes.length
+  const prevApprovedQuotes = prevMonthQuotes.filter((q) => q.status === 'Aprovado')
+  const prevTotalApprovedQuotes = prevApprovedQuotes.length
+  const prevTotalApprovedValue = prevApprovedQuotes.reduce((sum, q) => sum + (q.total || 0), 0)
+  const prevNewClients = clientsCreatedInPrevMonth.length
+
+  // Variações percentuais (% MoM)
+  const calcVariationPercent = (current: number, previous: number): number | null => {
+    if (previous === 0) {
+      if (current === 0) return 0
+      return null // Sem base anterior (ex: +100% ou infinito)
+    }
+    return Math.round(((current - previous) / previous) * 100)
+  }
+
+  const quotesVariation = calcVariationPercent(totalQuotesPeriod, prevTotalQuotes)
+  const approvedQuotesVariation = calcVariationPercent(
+    totalApprovedQuotesPeriod,
+    prevTotalApprovedQuotes,
+  )
+  const approvedValueVariation = calcVariationPercent(
+    totalApprovedValuePeriod,
+    prevTotalApprovedValue,
+  )
+  const newClientsVariation = calcVariationPercent(
+    clientsCreatedInSelectedMonth.length,
+    prevNewClients,
+  )
+
+  // Gráfico de 6 meses centrados ou terminando na competência selecionada:
+  // Mostra os 6 meses terminando no mês selecionado (com a barra do mês selecionado em destaque âmbar)
+  const monthlyData = useMemo(() => {
+    const list: {
+      name: string
+      fullName: string
+      count: number
+      total: number
+      isSelectedMonth: boolean
+      monthIdx: number
+      yearVal: number
+    }[] = []
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(selectedYear, selectedMonth - i, 1)
+      const mIdx = d.getMonth()
+      const yVal = d.getFullYear()
+      const label = `${monthShortNames[mIdx]}`
+      const fullName = `${monthFullNames[mIdx]} de ${yVal}`
+
+      const matching = quotes.filter((q) => {
+        const parsed = parseLocalDate(q.created)
+        return parsed && parsed.month === mIdx && parsed.year === yVal
+      })
+
+      const monthTotal = matching.reduce((acc, curr) => acc + (curr.total || 0), 0)
+
+      list.push({
+        name: label,
+        fullName,
+        count: matching.length,
+        total: monthTotal,
+        isSelectedMonth: i === 0,
+        monthIdx: mIdx,
+        yearVal: yVal,
+      })
+    }
+    return list
+  }, [quotes, selectedMonth, selectedYear])
+
+  // Orçamentos Recentes da competência selecionada (até 6 mais recentes do período)
+  const periodRecentQuotes = useMemo(() => {
+    const sorted = [...selectedMonthQuotes].sort((a, b) => {
+      const da = new Date(a.created).getTime() || 0
+      const db = new Date(b.created).getTime() || 0
+      return db - da
+    })
+    return sorted.slice(0, 6)
+  }, [selectedMonthQuotes])
+
+  // Clientes do período (novos cadastrados no mês selecionado, ou os mais recentes até então)
+  const periodRecentClients = useMemo(() => {
+    const monthClients = [...clientsCreatedInSelectedMonth].sort((a, b) => {
+      const da = new Date(a.created).getTime() || 0
+      const db = new Date(b.created).getTime() || 0
+      return db - da
+    })
+    if (monthClients.length > 0) {
+      return monthClients.slice(0, 6)
+    }
+    // Caso não haja clientes novos no mês, mostra os 6 clientes mais recentes da base até a competência
+    const sorted = [...cumulativeClientsUntilPeriod].sort((a, b) => {
+      const da = new Date(a.created).getTime() || 0
+      const db = new Date(b.created).getTime() || 0
+      return db - da
+    })
+    return sorted.slice(0, 6)
+  }, [clientsCreatedInSelectedMonth, cumulativeClientsUntilPeriod])
+
+  // =========================================================================
+  // CÁLCULO DAS COMISSÕES DO MÊS SELECIONADO POR VENDEDOR
   // Nova Regra Corteplan solicitada:
   // "A comissão acumulada no dashboard só pode ser computada após o orçamento gerar o pedido."
-  // - quotesCount: propostas emitidas no mês pelo vendedor (para acompanhamento comercial)
+  // - quotesCount: propostas emitidas no mês selecionado pelo vendedor
   // - ordersCount / volume faturado / comissão a receber: COMPUTADOS APENAS para
   //   orçamentos que já geraram pedido (order_id / order_number presente ou pedido na tabela orders)
   // - Confidencialidade: Administrador vê todos os vendedores; Vendedor vê apenas a própria linha.
   // =========================================================================
 
   // Conjunto de quote IDs que possuem pedido vinculado (via tabela orders ou campo do quote)
-  const quotesWithOrdersSet = new Set<string>()
-  orders.forEach((o) => {
-    if (o.quote) quotesWithOrdersSet.add(o.quote)
-  })
-  quotes.forEach((q) => {
-    if ((q.order_id && q.order_id.trim()) || (q.order_number && q.order_number > 0)) {
-      quotesWithOrdersSet.add(q.id)
-    }
-  })
+  const quotesWithOrdersSet = useMemo(() => {
+    const set = new Set<string>()
+    orders.forEach((o) => {
+      if (o.quote) set.add(o.quote)
+    })
+    quotes.forEach((q) => {
+      if ((q.order_id && q.order_id.trim()) || (q.order_number && q.order_number > 0)) {
+        set.add(q.id)
+      }
+    })
+    return set
+  }, [orders, quotes])
 
-  const currentMonthQuotes = quotes.filter((q) => {
-    if (!q.created) return false
-    const qDate = new Date(q.created)
-    return qDate.getMonth() === now.getMonth() && qDate.getFullYear() === now.getFullYear()
-  })
-
-  // Agrupa os orçamentos do mês por vendedor
+  // Agrupa os orçamentos do mês selecionado por vendedor
   interface SellerCommissionSummary {
     userId?: string
     name: string
@@ -357,130 +606,128 @@ export default function Index() {
     isCurrentUser: boolean
   }
 
-  // Mapa de vendedores conhecidos (a partir de usersList e dos orçamentos do mês)
-  const sellersMap = new Map<string, SellerCommissionSummary>()
+  const { sellersCommissionList, totalCommissionsMonth, totalOrdersMonth, totalQuotesMonth } =
+    useMemo(() => {
+      const map = new Map<string, SellerCommissionSummary>()
 
-  // Inicializa com usuários ativos do sistema que sejam Vendedores ou tenham emitido algo
-  usersList.forEach((u) => {
-    const isMe = user?.id === u.id
-    sellersMap.set(u.id, {
-      userId: u.id,
-      name: u.name || u.email.split('@')[0],
-      role: u.role || 'Vendedor',
-      quotesCount: 0,
-      ordersCount: 0,
-      commissionTotal: 0,
-      totalVolume: 0,
-      isCurrentUser: isMe,
-    })
-  })
-
-  // Processa cada orçamento do mês
-  currentMonthQuotes.forEach((q) => {
-    // Identifica o vendedor
-    let sellerKey = q.seller_user
-    let sellerName = q.seller || q.expand?.seller_user?.name
-
-    if (!sellerKey) {
-      // Tenta achar pelo nome do vendedor nos users
-      const match = usersList.find(
-        (u) =>
-          sellerName &&
-          (u.name.toLowerCase().trim() === sellerName.toLowerCase().trim() ||
-            sellerName.toLowerCase().includes(u.name.toLowerCase().trim())),
-      )
-      if (match) {
-        sellerKey = match.id
-        sellerName = match.name
-      } else {
-        sellerKey = sellerName ? `name:${sellerName}` : 'unknown'
-      }
-    }
-
-    if (!sellerName && sellerKey && sellersMap.has(sellerKey)) {
-      sellerName = sellersMap.get(sellerKey)!.name
-    }
-
-    const finalName = sellerName || 'Vendedor'
-    const isMe =
-      user?.id === sellerKey ||
-      (user?.name && finalName.toLowerCase().trim() === user.name.toLowerCase().trim())
-
-    if (!sellersMap.has(sellerKey)) {
-      sellersMap.set(sellerKey, {
-        userId: sellerKey.startsWith('name:') ? undefined : sellerKey,
-        name: finalName,
-        role: 'Vendedor',
-        quotesCount: 0,
-        ordersCount: 0,
-        commissionTotal: 0,
-        totalVolume: 0,
-        isCurrentUser: isMe,
-      })
-    }
-
-    const existing = sellersMap.get(sellerKey)!
-    // Contador de propostas emitidas no mês
-    existing.quotesCount += 1
-
-    // REGRA: Comissão acumulada e volume faturado SÓ entram se o orçamento já gerou pedido
-    const hasOrder = quotesWithOrdersSet.has(q.id)
-    if (hasOrder) {
-      const { commissionAmount } = calculateCommission(
-        q.items,
-        q.discount_percent,
-        q.commission_percent,
-      )
-      existing.ordersCount += 1
-      existing.commissionTotal += commissionAmount
-      existing.totalVolume += q.total || 0
-    }
-
-    if (isMe) existing.isCurrentUser = true
-  })
-
-  // Converte para lista
-  let sellersCommissionList = Array.from(sellersMap.values())
-
-  // Se não for admin, filtra estritamente para apenas a própria linha
-  if (!isAdmin) {
-    sellersCommissionList = sellersCommissionList.filter(
-      (s) =>
-        s.isCurrentUser ||
-        (user?.id && s.userId === user.id) ||
-        (user?.name && s.name.toLowerCase().trim() === user.name.toLowerCase().trim()),
-    )
-
-    // Se o usuário ainda não tiver nenhum orçamento no mês, assegura exibição zerada
-    if (sellersCommissionList.length === 0 && user) {
-      sellersCommissionList = [
-        {
-          userId: user.id,
-          name: user.name || 'Meu Usuário',
-          role: user.role || 'Vendedor',
+      // Inicializa com usuários ativos do sistema
+      usersList.forEach((u) => {
+        const isMe = user?.id === u.id
+        map.set(u.id, {
+          userId: u.id,
+          name: u.name || u.email.split('@')[0],
+          role: u.role || 'Vendedor',
           quotesCount: 0,
           ordersCount: 0,
           commissionTotal: 0,
           totalVolume: 0,
-          isCurrentUser: true,
-        },
-      ]
-    }
-  } else {
-    // Admin: exibe vendedores que emitiram propostas, geraram pedidos ou comissionamento no mês
-    if (sellersCommissionList.length > 8) {
-      sellersCommissionList = sellersCommissionList.filter(
-        (s) => s.quotesCount > 0 || s.ordersCount > 0 || s.commissionTotal > 0,
-      )
-    }
-  }
+          isCurrentUser: isMe,
+        })
+      })
 
-  // Ordenar por maior comissão decrescente
-  sellersCommissionList.sort((a, b) => b.commissionTotal - a.commissionTotal)
+      // Processa cada orçamento da competência selecionada
+      selectedMonthQuotes.forEach((q) => {
+        let sellerKey = q.seller_user
+        let sellerName = q.seller || q.expand?.seller_user?.name
 
-  const totalCommissionsMonth = sellersCommissionList.reduce((sum, s) => sum + s.commissionTotal, 0)
-  const totalOrdersMonth = sellersCommissionList.reduce((sum, s) => sum + s.ordersCount, 0)
-  const totalQuotesMonth = sellersCommissionList.reduce((sum, s) => sum + s.quotesCount, 0)
+        if (!sellerKey) {
+          const match = usersList.find(
+            (u) =>
+              sellerName &&
+              (u.name.toLowerCase().trim() === sellerName.toLowerCase().trim() ||
+                sellerName.toLowerCase().includes(u.name.toLowerCase().trim())),
+          )
+          if (match) {
+            sellerKey = match.id
+            sellerName = match.name
+          } else {
+            sellerKey = sellerName ? `name:${sellerName}` : 'unknown'
+          }
+        }
+
+        if (!sellerName && sellerKey && map.has(sellerKey)) {
+          sellerName = map.get(sellerKey)!.name
+        }
+
+        const finalName = sellerName || 'Vendedor'
+        const isMe =
+          user?.id === sellerKey ||
+          (user?.name && finalName.toLowerCase().trim() === user.name.toLowerCase().trim())
+
+        if (!map.has(sellerKey)) {
+          map.set(sellerKey, {
+            userId: sellerKey.startsWith('name:') ? undefined : sellerKey,
+            name: finalName,
+            role: 'Vendedor',
+            quotesCount: 0,
+            ordersCount: 0,
+            commissionTotal: 0,
+            totalVolume: 0,
+            isCurrentUser: isMe,
+          })
+        }
+
+        const existing = map.get(sellerKey)!
+        existing.quotesCount += 1
+
+        const hasOrder = quotesWithOrdersSet.has(q.id)
+        if (hasOrder) {
+          const { commissionAmount } = calculateCommission(
+            q.items,
+            q.discount_percent,
+            q.commission_percent,
+          )
+          existing.ordersCount += 1
+          existing.commissionTotal += commissionAmount
+          existing.totalVolume += q.total || 0
+        }
+
+        if (isMe) existing.isCurrentUser = true
+      })
+
+      let list = Array.from(map.values())
+
+      if (!isAdmin) {
+        list = list.filter(
+          (s) =>
+            s.isCurrentUser ||
+            (user?.id && s.userId === user.id) ||
+            (user?.name && s.name.toLowerCase().trim() === user.name.toLowerCase().trim()),
+        )
+
+        if (list.length === 0 && user) {
+          list = [
+            {
+              userId: user.id,
+              name: user.name || 'Meu Usuário',
+              role: user.role || 'Vendedor',
+              quotesCount: 0,
+              ordersCount: 0,
+              commissionTotal: 0,
+              totalVolume: 0,
+              isCurrentUser: true,
+            },
+          ]
+        }
+      } else {
+        if (list.length > 8) {
+          list = list.filter((s) => s.quotesCount > 0 || s.ordersCount > 0 || s.commissionTotal > 0)
+        }
+      }
+
+      list.sort((a, b) => b.commissionTotal - a.commissionTotal)
+
+      const totalCommissions = list.reduce((sum, s) => sum + s.commissionTotal, 0)
+      const totalOrders = list.reduce((sum, s) => sum + s.ordersCount, 0)
+      const totalQuotes = list.reduce((sum, s) => sum + s.quotesCount, 0)
+
+      return {
+        sellersCommissionList: list,
+        totalCommissionsMonth: totalCommissions,
+        totalOrdersMonth: totalOrders,
+        totalQuotesMonth: totalQuotes,
+      }
+    }, [usersList, user, selectedMonthQuotes, quotesWithOrdersSet, isAdmin])
 
   // Cores de status
   const getStatusBadge = (status: string) => {
@@ -568,7 +815,130 @@ export default function Index() {
         </div>
       </div>
 
-      {/* PAINEL DE COMISSÕES DO MÊS (POR VENDEDOR) COM REGRA DE CONFIDENCIALIDADE */}
+      {/* SELETOR DE COMPETÊNCIA MENSAL (HISTÓRICO ATUAL E ANTERIORES) */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Lado esquerdo: Navegação de Mês/Ano + Botão Ir para hoje */}
+          <div className="flex items-center flex-wrap gap-2.5 sm:gap-3">
+            <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={handlePrevMonth}
+                title="Mês anterior"
+                className="h-8 w-8 p-0 rounded-lg hover:bg-white text-slate-700"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              <div className="flex items-center gap-1.5 px-1">
+                <Select
+                  value={String(selectedMonth)}
+                  onValueChange={(val) => updateCompetency(Number(val), selectedYear)}
+                >
+                  <SelectTrigger className="w-36 h-8 text-xs font-semibold rounded-lg bg-white border-slate-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {monthFullNames.map((name, idx) => (
+                      <SelectItem key={idx} value={String(idx)}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={String(selectedYear)}
+                  onValueChange={(val) => updateCompetency(selectedMonth, Number(val))}
+                >
+                  <SelectTrigger className="w-24 h-8 text-xs font-semibold rounded-lg bg-white border-slate-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableYears.map((yr) => (
+                      <SelectItem key={yr} value={String(yr)}>
+                        {yr}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={handleNextMonth}
+                title="Próximo mês"
+                className="h-8 w-8 p-0 rounded-lg hover:bg-white text-slate-700"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Atalho "Ir para hoje" quando não estiver no mês corrente */}
+            {!isCurrentMonthView && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleGoToToday}
+                className="h-8 text-xs rounded-xl border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 font-semibold"
+              >
+                <Calendar className="h-3.5 w-3.5 mr-1 text-[#E66812]" />
+                Ir para hoje
+              </Button>
+            )}
+          </div>
+
+          {/* Lado direito: Rótulo claro da competência e status */}
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
+              <CalendarDays className="h-4 w-4 text-[#F08A24]" />
+              <span className="text-xs font-medium text-slate-600">Competência ativa:</span>
+              <strong className="text-xs font-bold text-slate-900">
+                {monthFullNames[selectedMonth]} de {selectedYear}
+              </strong>
+            </div>
+
+            {isCurrentMonthView ? (
+              <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold py-1 px-2.5">
+                Mês Corrente
+              </Badge>
+            ) : (
+              <Badge className="bg-amber-50 text-amber-800 border border-amber-300 text-[11px] font-semibold py-1 px-2.5">
+                Histórico
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Resumo do período selecionado e aviso caso não haja movimentação */}
+        {totalQuotesPeriod === 0 && (
+          <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs text-slate-500 flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-slate-400 shrink-0" />
+              Nenhum orçamento emitido no mês de {monthFullNames[selectedMonth]} de {selectedYear}.
+              Os indicadores abaixo refletem a competência selecionada.
+            </span>
+            {!isCurrentMonthView && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleGoToToday}
+                className="text-xs text-[#E66812] hover:text-[#F08A24] font-semibold h-7"
+              >
+                Voltar ao mês atual &rarr;
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* PAINEL DE COMISSÕES DO PERÍODO SELECIONADO (POR VENDEDOR) COM REGRA DE CONFIDENCIALIDADE */}
       <Card className="rounded-2xl border-slate-800 bg-[#1C1C1E] text-white shadow-xl overflow-hidden">
         <div className="p-6 border-b border-slate-800 bg-gradient-to-r from-[#242427] to-[#1C1C1E] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -578,7 +948,7 @@ export default function Index() {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                  Comissões do Mês ({monthNames[now.getMonth()]}/{now.getFullYear()})
+                  Comissões da Competência ({monthFullNames[selectedMonth]} de {selectedYear})
                 </h3>
                 {isAdmin ? (
                   <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-orange-500/20 text-[#F08A24] border border-orange-500/30 flex items-center gap-1">
@@ -594,8 +964,8 @@ export default function Index() {
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
                 {isAdmin
-                  ? 'Comissões acumuladas sobre orçamentos com pedidos gerados no mês atual (base de produtos comissionáveis)'
-                  : 'Sua comissão a receber sobre orçamentos que já geraram pedido neste mês'}
+                  ? `Comissões acumuladas sobre orçamentos com pedidos gerados em ${monthFullNames[selectedMonth]} de ${selectedYear}`
+                  : `Sua comissão a receber sobre orçamentos que geraram pedido em ${monthFullNames[selectedMonth]} de ${selectedYear}`}
               </p>
             </div>
           </div>
@@ -621,7 +991,7 @@ export default function Index() {
             <div className="h-8 w-px bg-slate-700 hidden sm:block" />
             <div>
               <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
-                Propostas do Mês
+                Propostas do Período
               </span>
               <span className="font-mono text-lg sm:text-xl font-extrabold text-white">
                 {totalQuotesMonth}
@@ -636,7 +1006,7 @@ export default function Index() {
               <thead className="bg-[#242427] text-slate-400 text-xs uppercase font-semibold border-b border-slate-800">
                 <tr>
                   <th className="py-3 px-5 sm:px-6">Vendedor</th>
-                  <th className="py-3 px-4 text-center">Propostas no Mês</th>
+                  <th className="py-3 px-4 text-center">Propostas no Período</th>
                   <th className="py-3 px-4 text-center">Pedidos Gerados</th>
                   <th className="py-3 px-4 text-right">Volume Faturado</th>
                   <th className="py-3 px-5 sm:px-6 text-right">Comissão a Receber</th>
@@ -646,8 +1016,8 @@ export default function Index() {
                 {sellersCommissionList.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-xs text-slate-500">
-                      Nenhuma proposta ou movimentação registrada no mês de{' '}
-                      {monthNames[now.getMonth()]}.
+                      Nenhuma proposta ou movimentação registrada na competência de{' '}
+                      {monthFullNames[selectedMonth]} de {selectedYear}.
                     </td>
                   </tr>
                 ) : (
@@ -922,7 +1292,7 @@ export default function Index() {
             {/* Bloco 2: Parcelas a Vencer (30 dias) */}
             {(() => {
               // Posiciona no mês da primeira parcela a vencer ou no mês atual
-              let upcomingTargetUrl = `/financeiro?tab=fluxo&view=a_vencer&month=${now.getMonth()}&year=${now.getFullYear()}`
+              let upcomingTargetUrl = `/financeiro?tab=fluxo&view=a_vencer&month=${currentMonth}&year=${currentYear}`
               if (installmentsSummary.firstUpcomingDate) {
                 const parts = installmentsSummary.firstUpcomingDate.split('-')
                 if (parts.length === 3) {
@@ -985,13 +1355,13 @@ export default function Index() {
         </div>
       )}
 
-      {/* 4 Cards de Resumo (KPIs) com microinteração de elevação */}
+      {/* 4 Cards de Resumo (KPIs da Competência Selecionada) com comparação MoM vs. mês anterior */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {/* KPI 1: Clientes */}
         <Card className="rounded-2xl border-slate-200/90 shadow-xs hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 bg-white">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Total de Clientes
+              Base de Clientes
             </CardTitle>
             <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
               <Users className="h-5 w-5" />
@@ -999,20 +1369,45 @@ export default function Index() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-extrabold text-slate-900 font-mono tracking-tight">
-              {totalClients}
+              {cumulativeClientsUntilPeriod.length}
             </div>
-            <div className="flex items-center gap-1.5 mt-2 text-xs font-medium text-emerald-600">
-              <TrendingUp className="h-3.5 w-3.5" />
-              <span>Base ativa e atualizada</span>
+            <div className="flex items-center justify-between gap-1.5 mt-2 text-xs">
+              <div className="flex items-center gap-1 font-medium text-slate-600 truncate">
+                <span className="font-semibold text-slate-900">
+                  +{clientsCreatedInSelectedMonth.length}
+                </span>{' '}
+                no mês
+              </div>
+              {newClientsVariation !== null ? (
+                <span
+                  className={`inline-flex items-center gap-0.5 font-bold text-[11px] ${
+                    newClientsVariation >= 0 ? 'text-emerald-600' : 'text-red-500'
+                  }`}
+                  title={`Comparado a ${monthShortNames[prevMonthIndex]}/${prevMonthYear}`}
+                >
+                  {newClientsVariation >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {newClientsVariation >= 0
+                    ? `+${newClientsVariation}%`
+                    : `${newClientsVariation}%`}
+                </span>
+              ) : (
+                <span className="text-[11px] text-slate-400">
+                  vs {monthShortNames[prevMonthIndex]}
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* KPI 2: Orçamentos Emitidos */}
+        {/* KPI 2: Orçamentos Emitidos no Período */}
         <Card className="rounded-2xl border-slate-200/90 shadow-xs hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 bg-white">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Orçamentos Emitidos
+              Orçamentos no Mês
             </CardTitle>
             <div className="h-10 w-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
               <FileText className="h-5 w-5" />
@@ -1020,13 +1415,34 @@ export default function Index() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-extrabold text-slate-900 font-mono tracking-tight">
-              {totalQuotes}
+              {totalQuotesPeriod}
             </div>
-            <p className="text-xs text-slate-500 mt-2">Propostas registradas no sistema</p>
+            <div className="flex items-center justify-between gap-1.5 mt-2 text-xs">
+              <span className="text-slate-500 truncate">
+                {prevTotalQuotes} em {monthShortNames[prevMonthIndex]}
+              </span>
+              {quotesVariation !== null ? (
+                <span
+                  className={`inline-flex items-center gap-0.5 font-bold text-[11px] ${
+                    quotesVariation >= 0 ? 'text-emerald-600' : 'text-red-500'
+                  }`}
+                  title={`Variação vs ${monthShortNames[prevMonthIndex]}/${prevMonthYear}`}
+                >
+                  {quotesVariation >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {quotesVariation >= 0 ? `+${quotesVariation}%` : `${quotesVariation}%`}
+                </span>
+              ) : (
+                <span className="text-[11px] text-slate-400">Novo período</span>
+              )}
+            </div>
           </CardContent>
         </Card>
 
-        {/* KPI 3: Orçamentos Aprovados */}
+        {/* KPI 3: Orçamentos Aprovados no Período */}
         <Card className="rounded-2xl border-slate-200/90 shadow-xs hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 bg-white">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -1038,21 +1454,40 @@ export default function Index() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-extrabold text-slate-900 font-mono tracking-tight">
-              {totalApprovedQuotes}
+              {totalApprovedQuotesPeriod}
             </div>
-            <p className="text-xs text-slate-500 mt-2">
-              {totalQuotes > 0
-                ? `${Math.round((totalApprovedQuotes / totalQuotes) * 100)}% de taxa de conversão`
-                : 'Sem propostas emitidas'}
-            </p>
+            <div className="flex items-center justify-between gap-1.5 mt-2 text-xs">
+              <span className="text-slate-500">{conversionRatePeriod}% de conversão</span>
+              {approvedQuotesVariation !== null ? (
+                <span
+                  className={`inline-flex items-center gap-0.5 font-bold text-[11px] ${
+                    approvedQuotesVariation >= 0 ? 'text-emerald-600' : 'text-red-500'
+                  }`}
+                  title={`Variação vs ${monthShortNames[prevMonthIndex]}/${prevMonthYear}`}
+                >
+                  {approvedQuotesVariation >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {approvedQuotesVariation >= 0
+                    ? `+${approvedQuotesVariation}%`
+                    : `${approvedQuotesVariation}%`}
+                </span>
+              ) : (
+                <span className="text-[11px] text-slate-400">
+                  vs {monthShortNames[prevMonthIndex]}
+                </span>
+              )}
+            </div>
           </CardContent>
         </Card>
 
-        {/* KPI 4: Valor Total Aprovado */}
+        {/* KPI 4: Valor Total Aprovado no Período */}
         <Card className="rounded-2xl border-slate-200/90 shadow-xs hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 bg-white">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Valor Total Aprovado
+              Faturamento Aprovado
             </CardTitle>
             <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <DollarSign className="h-5 w-5" />
@@ -1060,30 +1495,54 @@ export default function Index() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl lg:text-3xl font-extrabold text-emerald-700 font-mono tracking-tight truncate">
-              {formatCurrencyBRL(totalApprovedValue)}
+              {formatCurrencyBRL(totalApprovedValuePeriod)}
             </div>
-            <p className="text-xs text-slate-500 mt-2">Faturamento comercial aprovado</p>
+            <div className="flex items-center justify-between gap-1.5 mt-2 text-xs">
+              <span className="text-slate-500 truncate">{monthFullNames[selectedMonth]}</span>
+              {approvedValueVariation !== null ? (
+                <span
+                  className={`inline-flex items-center gap-0.5 font-bold text-[11px] ${
+                    approvedValueVariation >= 0 ? 'text-emerald-600' : 'text-red-500'
+                  }`}
+                  title={`Variação de receita vs ${monthShortNames[prevMonthIndex]}/${prevMonthYear}`}
+                >
+                  {approvedValueVariation >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {approvedValueVariation >= 0
+                    ? `+${approvedValueVariation}%`
+                    : `${approvedValueVariation}%`}
+                </span>
+              ) : (
+                <span className="text-[11px] text-slate-400">
+                  vs {monthShortNames[prevMonthIndex]}
+                </span>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Grid: Gráfico e Listas Recentes */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Gráfico de Barras: 60% (7 cols desktop) */}
+        {/* Gráfico de Barras: 60% (7 cols desktop) com destaque âmbar na competência selecionada */}
         <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between pb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 gap-2">
             <div>
               <h3 className="text-base font-bold text-slate-900">Orçamentos Emitidos por Mês</h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Histórico de emissão nos últimos 6 meses (mês atual em destaque âmbar)
+                Histórico de 6 meses até {monthFullNames[selectedMonth]} de {selectedYear} (barra
+                selecionada em destaque)
               </p>
             </div>
-            <div className="flex items-center gap-3 text-xs font-medium text-slate-500">
+            <div className="flex items-center gap-3 text-xs font-medium text-slate-500 shrink-0">
               <span className="flex items-center gap-1.5">
                 <span className="h-3 w-3 rounded-xs bg-[#3A3A3C]" /> Histórico
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded-xs bg-[#F59E0B]" /> Mês Atual
+                <span className="h-3 w-3 rounded-xs bg-[#F08A24]" /> Mês Ativo
               </span>
             </div>
           </div>
@@ -1106,14 +1565,15 @@ export default function Index() {
                 />
                 <Tooltip
                   cursor={{ fill: '#F1F5F9', radius: 8 }}
-                  content={({ active, payload, label }) => {
+                  content={({ active, payload }) => {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload
                       return (
                         <div className="bg-slate-900 text-white p-3 rounded-xl shadow-xl text-xs space-y-1">
-                          <p className="font-bold text-amber-400">{label}</p>
+                          <p className="font-bold text-amber-400">{data.fullName}</p>
                           <p className="text-slate-200">
-                            Propostas: <span className="font-bold font-mono">{data.count}</span>
+                            Propostas emitidas:{' '}
+                            <span className="font-bold font-mono">{data.count}</span>
                           </p>
                           <p className="text-slate-200">
                             Volume estimado:{' '}
@@ -1121,34 +1581,58 @@ export default function Index() {
                               {formatCurrencyBRL(data.total)}
                             </span>
                           </p>
+                          {data.isSelectedMonth && (
+                            <p className="text-[#F08A24] font-semibold pt-1 border-t border-slate-700 text-[11px]">
+                              &bull; Competência selecionada
+                            </p>
+                          )}
                         </div>
                       )
                     }
                     return null
                   }}
                 />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                <Bar
+                  dataKey="count"
+                  radius={[6, 6, 0, 0]}
+                  cursor="pointer"
+                  onClick={(entry: any) => {
+                    if (entry && typeof entry.monthIdx === 'number' && entry.yearVal) {
+                      updateCompetency(entry.monthIdx, entry.yearVal)
+                    }
+                  }}
+                >
                   {monthlyData.map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}
-                      fill={entry.isCurrentMonth ? '#F08A24' : '#3A3A3C'}
+                      fill={entry.isSelectedMonth ? '#F08A24' : '#3A3A3C'}
                     />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <p className="text-[11px] text-slate-400 text-center mt-2">
+            Dica: clique em qualquer barra do gráfico para navegar diretamente àquele mês.
+          </p>
         </div>
 
         {/* Listas Recentes (40% - 5 cols desktop) */}
         <div className="lg:col-span-5 space-y-6">
-          {/* Orçamentos Recentes */}
+          {/* Orçamentos do Período Selecionado */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">Orçamentos Recentes</h3>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Orçamentos de {monthFullNames[selectedMonth]}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {totalQuotesPeriod} proposta(s) emitida(s) nesta competência
+                </p>
+              </div>
               <Link
                 to="/orcamentos"
-                className="text-xs font-semibold text-[#3A3A3C] hover:text-[#F08A24] flex items-center gap-1 hover:underline"
+                className="text-xs font-semibold text-[#3A3A3C] hover:text-[#F08A24] flex items-center gap-1 hover:underline shrink-0"
               >
                 Ver todos
                 <ArrowRight className="h-3 w-3" />
@@ -1156,12 +1640,15 @@ export default function Index() {
             </div>
 
             <div className="divide-y divide-slate-100 mt-2">
-              {recentQuotes.length === 0 ? (
-                <div className="py-6 text-center text-xs text-slate-400">
-                  Nenhum orçamento cadastrado ainda.
+              {periodRecentQuotes.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400 space-y-1">
+                  <p className="font-semibold text-slate-600">
+                    Nenhum orçamento emitido em {monthFullNames[selectedMonth]} de {selectedYear}.
+                  </p>
+                  <p className="text-slate-400">Altere o mês acima ou crie uma nova proposta.</p>
                 </div>
               ) : (
-                recentQuotes.map((quote) => (
+                periodRecentQuotes.map((quote) => (
                   <Link
                     key={quote.id}
                     to={`/orcamentos/${quote.id}`}
@@ -1175,7 +1662,10 @@ export default function Index() {
                         {getStatusBadge(quote.status)}
                       </div>
                       <p className="text-xs text-slate-600 truncate mt-1">
-                        {quote.expand?.client?.name || 'Cliente'}
+                        {quote.expand?.client?.name || 'Cliente'} &bull;{' '}
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {formatDateBR(quote.created)}
+                        </span>
                       </p>
                     </div>
 
@@ -1197,13 +1687,24 @@ export default function Index() {
             </div>
           </div>
 
-          {/* Clientes Recentes */}
+          {/* Clientes da Competência */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">Clientes Recentes</h3>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {clientsCreatedInSelectedMonth.length > 0
+                    ? `Novos Clientes de ${monthFullNames[selectedMonth]}`
+                    : 'Clientes da Base'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {clientsCreatedInSelectedMonth.length > 0
+                    ? `${clientsCreatedInSelectedMonth.length} cadastrado(s) no mês`
+                    : `Base cumulativa até ${monthFullNames[selectedMonth]}/${selectedYear}`}
+                </p>
+              </div>
               <Link
                 to="/clientes"
-                className="text-xs font-semibold text-[#3A3A3C] hover:text-[#F08A24] flex items-center gap-1 hover:underline"
+                className="text-xs font-semibold text-[#3A3A3C] hover:text-[#F08A24] flex items-center gap-1 hover:underline shrink-0"
               >
                 Ver todos
                 <ArrowRight className="h-3 w-3" />
@@ -1211,12 +1712,12 @@ export default function Index() {
             </div>
 
             <div className="divide-y divide-slate-100 mt-2">
-              {recentClients.length === 0 ? (
-                <div className="py-6 text-center text-xs text-slate-400">
-                  Nenhum cliente cadastrado ainda.
+              {periodRecentClients.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400">
+                  Nenhum cliente cadastrado neste período.
                 </div>
               ) : (
-                recentClients.map((c) => (
+                periodRecentClients.map((c) => (
                   <Link
                     key={c.id}
                     to={`/clientes/${c.id}`}
