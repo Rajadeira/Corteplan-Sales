@@ -20,6 +20,9 @@ import {
   X,
   ShieldAlert,
   Package,
+  GripVertical,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import { canManageRecord } from '@/lib/permissions'
 import { compressProductImage } from '@/lib/imageUtils'
@@ -87,9 +90,10 @@ export default function QuoteForm() {
   const [clientSearchQuery, setClientSearchQuery] = useState('')
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false)
 
-  // Itens do orçamento (com tax e technical_description)
+  // Itens do orçamento (com tax, technical_description e id único para drag & drop)
   const [items, setItems] = useState<QuoteItem[]>([
     {
+      id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       description: '',
       quantity: 1,
       unit: 'un',
@@ -98,6 +102,10 @@ export default function QuoteForm() {
       technical_description: '',
     },
   ])
+
+  // Estado para drag and drop dos itens
+  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null)
+  const [dragOverItemIndex, setDragOverItemIndex] = useState<number | null>(null)
 
   // Desconto (percentual e valor em R$) e modo de desconto
   const [discountPercent, setDiscountPercent] = useState<number>(0)
@@ -192,9 +200,14 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
           setSelectedClientId(q.client)
           setItems(
             q.items && q.items.length > 0
-              ? q.items
+              ? q.items.map((it, idx) => ({
+                  ...it,
+                  id:
+                    it.id || `item-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                }))
               : [
                   {
+                    id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                     description: '',
                     quantity: 1,
                     unit: 'un',
@@ -483,6 +496,7 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
     setItems((prev) => [
       ...prev,
       {
+        id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         description: '',
         quantity: 1,
         unit: 'un',
@@ -491,6 +505,49 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
         technical_description: '',
       },
     ])
+  }
+
+  // Reordenação de itens: mover para cima
+  const handleMoveItemUp = (index: number) => {
+    if (index <= 0) return
+    setItems((prev) => {
+      const next = [...prev]
+      const temp = next[index]
+      next[index] = next[index - 1]
+      next[index - 1] = temp
+      return next
+    })
+  }
+
+  // Reordenação de itens: mover para baixo
+  const handleMoveItemDown = (index: number) => {
+    if (index >= items.length - 1) return
+    setItems((prev) => {
+      const next = [...prev]
+      const temp = next[index]
+      next[index] = next[index + 1]
+      next[index + 1] = temp
+      return next
+    })
+  }
+
+  // Drag and drop: reordenar da posição 'from' para a posição 'to'
+  const handleReorderItems = (fromIndex: number, toIndex: number) => {
+    if (
+      fromIndex === toIndex ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= items.length ||
+      toIndex >= items.length
+    ) {
+      return
+    }
+    setItems((prev) => {
+      const next = [...prev]
+      const [movedItem] = next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, movedItem)
+      return next
+    })
   }
 
   // Atualizar campo de item
@@ -650,6 +707,7 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
 
     setSaving(true)
     const cleanItems: QuoteItem[] = items.map((it) => ({
+      id: it.id,
       description: it.description.trim(),
       category: it.category || 'Mobiliário',
       quantity: Number(it.quantity) || 1,
@@ -989,31 +1047,137 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
 
           {/* Seção 2: Itens do Orçamento (com Impostos do item e Descrição Técnica detalhada) */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
                   2. Itens e Especificações Técnicas <span className="text-red-500">*</span>
                 </h2>
                 <p className="text-xs text-slate-500">
                   Inclua título curto, imposto do item e a descrição técnica completa como no modelo
-                  CORTEPLAN.
+                  CORTEPLAN. Você pode reposicionar os itens usando a alça de arrasto ou as setas.
                 </p>
               </div>
-              <span className="text-xs text-slate-400">{items.length} item(ns)</span>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                {items.length > 1 && (
+                  <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md hidden sm:inline-block">
+                    Arraste pela alça ou use as setas para reordenar
+                  </span>
+                )}
+                <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                  {items.length} item(ns)
+                </span>
+              </div>
             </div>
 
-            {/* Lista de itens dinâmicos */}
-            <div className="space-y-4">
+            {/* Lista de itens dinâmicos com suporte a drag & drop e reordenação por setas */}
+            <div
+              className="space-y-4"
+              onDragOver={(e) => {
+                // Necessário para permitir o drop no container
+                e.preventDefault()
+              }}
+            >
               {items.map((item, index) => {
                 const itemSubtotal = (Number(item.quantity) || 0) * (Number(item.unit_price) || 0)
+                const isDraggingThis = draggedItemIndex === index
+                const isDragOverThis = dragOverItemIndex === index && draggedItemIndex !== index
 
                 return (
                   <div
-                    key={index}
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3"
+                    key={item.id || `item-key-${index}`}
+                    data-item-index={index}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                      if (dragOverItemIndex !== index) {
+                        setDragOverItemIndex(index)
+                      }
+                    }}
+                    onDragLeave={(e) => {
+                      const related = e.relatedTarget as Node | null
+                      if (!e.currentTarget.contains(related)) {
+                        if (dragOverItemIndex === index) {
+                          setDragOverItemIndex(null)
+                        }
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const fromIdx =
+                        draggedItemIndex !== null
+                          ? draggedItemIndex
+                          : parseInt(e.dataTransfer.getData('text/plain'), 10)
+                      if (!isNaN(fromIdx) && fromIdx !== index) {
+                        handleReorderItems(fromIdx, index)
+                      }
+                      setDraggedItemIndex(null)
+                      setDragOverItemIndex(null)
+                    }}
+                    className={`p-4 rounded-xl border transition-all duration-150 space-y-3 relative ${
+                      isDraggingThis
+                        ? 'opacity-40 border-dashed border-amber-400 bg-amber-50/50 scale-[0.99]'
+                        : isDragOverThis
+                          ? 'border-amber-500 bg-amber-50/70 shadow-md ring-2 ring-amber-400/50'
+                          : 'border-slate-200 bg-slate-50/60 hover:border-slate-300'
+                    }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-xs font-bold text-slate-700">Item #{index + 1}</span>
+                    {/* Linha de cabeçalho do item: Controles de reordenação (Grip + Setas) + Identificação + Excluir */}
+                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
+                      <div className="flex items-center gap-2">
+                        {/* Alça de arrasto dedicada (Grip) draggable */}
+                        <div
+                          draggable
+                          onDragStart={(e) => {
+                            setDraggedItemIndex(index)
+                            e.dataTransfer.effectAllowed = 'move'
+                            e.dataTransfer.setData('text/plain', String(index))
+                            // Se disponível, define uma imagem de arrasto limpa usando o card pai
+                            const card = e.currentTarget.closest('[data-item-index]') as HTMLElement
+                            if (card && e.dataTransfer.setDragImage) {
+                              e.dataTransfer.setDragImage(card, 20, 20)
+                            }
+                          }}
+                          onDragEnd={() => {
+                            setDraggedItemIndex(null)
+                            setDragOverItemIndex(null)
+                          }}
+                          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-slate-500 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 cursor-grab active:cursor-grabbing select-none transition-colors border border-slate-200"
+                          title="Clique e arraste para mudar a ordem deste produto"
+                        >
+                          <GripVertical className="h-4 w-4 text-slate-600" />
+                          <span className="text-[11px] font-semibold text-slate-600 hidden sm:inline">
+                            Arrastar
+                          </span>
+                        </div>
+
+                        {/* Botões de Setas: Mover para cima / Mover para baixo (essenciais para mobile e atalho rápido) */}
+                        <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => handleMoveItemUp(index)}
+                            disabled={index === 0}
+                            title="Mover item para cima"
+                            className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+                          >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          </button>
+                          <div className="w-px h-3.5 bg-slate-200" />
+                          <button
+                            type="button"
+                            onClick={() => handleMoveItemDown(index)}
+                            disabled={index === items.length - 1}
+                            title="Mover item para baixo"
+                            className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+                          >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+
+                        <span className="text-xs font-bold text-slate-800 ml-1">
+                          Item #{index + 1}
+                        </span>
+                      </div>
+
                       {items.length > 1 && (
                         <Button
                           type="button"
