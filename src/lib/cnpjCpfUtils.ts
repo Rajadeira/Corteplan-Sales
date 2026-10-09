@@ -108,9 +108,89 @@ export interface CNPJConsultResult {
 }
 
 /**
- * Consulta dados cadastrais do CNPJ:
- * 1. BrasilAPI (https://brasilapi.com.br/api/cnpj/v1/{cnpj})
- * 2. ReceitaWS (https://receitaws.com.br/v1/cnpj/{cnpj}) como fallback
+ * Consulta ReceitaWS diretamente via JSONP (compatível com navegadores, contornando a ausência de cabeçalho CORS).
+ */
+function consultReceitaWSJsonp(clean: string, timeoutMs = 8000): Promise<CNPJConsultResult> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') {
+      return reject(new Error('JSONP só funciona em ambiente de navegador'))
+    }
+
+    const callbackName = `receitaws_cb_${Date.now()}_${Math.floor(Math.random() * 10000)}`
+    let isSettled = false
+
+    const cleanup = () => {
+      delete (window as unknown as Record<string, unknown>)[callbackName]
+      const script = document.getElementById(callbackName)
+      if (script && script.parentNode) {
+        script.parentNode.removeChild(script)
+      }
+    }
+
+    const timer = window.setTimeout(() => {
+      if (isSettled) return
+      isSettled = true
+      cleanup()
+      reject(new Error('Timeout na consulta ReceitaWS via JSONP'))
+    }, timeoutMs)
+
+    ;(window as unknown as Record<string, (data: Record<string, unknown>) => void>)[callbackName] =
+      (data: Record<string, unknown>) => {
+        if (isSettled) return
+        isSettled = true
+        window.clearTimeout(timer)
+        cleanup()
+
+        if (!data || data.status === 'ERROR') {
+          return reject(new Error(String(data?.message || 'CNPJ não encontrado na ReceitaWS')))
+        }
+
+        const nome = String(data.nome || '')
+        const fantasia = String(data.fantasia || '')
+        if (!nome && !fantasia) {
+          return reject(new Error('Resposta vazia da ReceitaWS'))
+        }
+
+        resolve({
+          razaoSocial: nome,
+          nomeFantasia: fantasia,
+          logradouro: String(data.logradouro || ''),
+          numero: String(data.numero || ''),
+          complemento: String(data.complemento || ''),
+          bairro: String(data.bairro || ''),
+          cidade: String(data.municipio || ''),
+          uf: String(data.uf || ''),
+          cep: data.cep ? maskCEP(String(data.cep)) : '',
+          telefone: data.telefone ? cleanDocument(String(data.telefone)) : '',
+          email: String(data.email || '')
+            .toLowerCase()
+            .trim(),
+          fonte: 'ReceitaWS',
+        })
+      }
+
+    const script = document.createElement('script')
+    script.id = callbackName
+    script.src = `https://receitaws.com.br/v1/cnpj/${clean}?callback=${callbackName}`
+    script.async = true
+    script.onerror = () => {
+      if (isSettled) return
+      isSettled = true
+      window.clearTimeout(timer)
+      cleanup()
+      reject(new Error('Erro de conexão com o script da ReceitaWS'))
+    }
+
+    document.head.appendChild(script)
+  })
+}
+
+/**
+ * Consulta dados cadastrais do CNPJ com estratégia multi-camada resiliente:
+ * 1. Proxy do Backend (/backend/v1/consult-cnpj/{cnpj}) com autenticação do usuário
+ *    (executa no servidor PB sem limitações de CORS e com acesso a BrasilAPI + ReceitaWS)
+ * 2. Fallback direto BrasilAPI pelo browser (se o backend estiver indisponível ou deslogado)
+ * 3. Fallback ReceitaWS via JSONP pelo browser (suportado oficialmente pela ReceitaWS)
  */
 export async function consultCNPJ(cnpj: string): Promise<CNPJConsultResult> {
   const clean = cleanDocument(cnpj)
@@ -118,13 +198,82 @@ export async function consultCNPJ(cnpj: string): Promise<CNPJConsultResult> {
     throw new Error('CNPJ deve conter 14 dígitos')
   }
 
-  // Tentativa 1: BrasilAPI
+  // Tentativa 1: Endpoint proxy do backend PocketBase (servidor -> APIs externas, imune a CORS de browser)
   try {
+    const pbBase = (import.meta.env.VITE_POCKETBASE_URL || '').replace(/\/$/, '')
+    if (pbBase) {
+      // Obtém o token de autenticação atual do localStorage (PocketBase authStore)
+      let token = ''
+      try {
+        const stored = localStorage.getItem('pocketbase_auth')
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          token = parsed?.token || ''
+        }
+      } catch (_) {
+        // Ignora erro de leitura local
+      }
+
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 9000)
+
+      const res = await fetch(`${pbBase}/backend/v1/consult-cnpj/${clean}`, {
+        headers,
+        signal: controller.signal,
+      }).catch((e) => {
+        console.warn('Erro de rede ao chamar proxy de CNPJ:', e)
+        return null
+      })
+
+      clearTimeout(timeoutId)
+
+      if (res && res.ok) {
+        const data = await res.json()
+        if (data && (data.razaoSocial || data.nomeFantasia)) {
+          return {
+            razaoSocial: data.razaoSocial || '',
+            nomeFantasia: data.nomeFantasia || '',
+            logradouro: data.logradouro || '',
+            numero: data.numero || '',
+            complemento: data.complemento || '',
+            bairro: data.bairro || '',
+            cidade: data.cidade || '',
+            uf: data.uf || '',
+            cep: data.cep ? maskCEP(data.cep) : '',
+            telefone: data.telefone ? cleanDocument(data.telefone) : '',
+            email: (data.email || '').toLowerCase().trim(),
+            fonte: data.fonte || 'ReceitaWS',
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(
+      'Proxy de consulta CNPJ falhou, iniciando consultas de fallback no cliente...',
+      err,
+    )
+  }
+
+  // Tentativa 2: Consulta direta BrasilAPI no browser
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 6000)
+
     const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${clean}`, {
       headers: { Accept: 'application/json' },
-    })
+      signal: controller.signal,
+    }).catch(() => null)
 
-    if (res.ok) {
+    clearTimeout(timeoutId)
+
+    if (res && res.ok) {
       const data = await res.json()
       if (data && (data.razao_social || data.nome_fantasia)) {
         const fullPhone =
@@ -152,36 +301,17 @@ export async function consultCNPJ(cnpj: string): Promise<CNPJConsultResult> {
       }
     }
   } catch (err) {
-    console.warn('Falha na consulta BrasilAPI, tentando fallback ReceitaWS...', err)
+    console.warn('Falha na consulta BrasilAPI direta:', err)
   }
 
-  // Tentativa 2 (Fallback): ReceitaWS
+  // Tentativa 3: Consulta ReceitaWS via JSONP (compatível com browser, sem erro de CORS)
   try {
-    const res = await fetch(`https://receitaws.com.br/v1/cnpj/${clean}`, {
-      headers: { Accept: 'application/json' },
-    })
-
-    if (res.ok) {
-      const data = await res.json()
-      if (data && data.status !== 'ERROR' && (data.nome || data.fantasia)) {
-        return {
-          razaoSocial: data.nome || '',
-          nomeFantasia: data.fantasia || '',
-          logradouro: data.logradouro || '',
-          numero: data.numero || '',
-          complemento: data.complemento || '',
-          bairro: data.bairro || '',
-          cidade: data.municipio || '',
-          uf: data.uf || '',
-          cep: data.cep ? maskCEP(data.cep) : '',
-          telefone: data.telefone ? cleanDocument(data.telefone) : '',
-          email: (data.email || '').toLowerCase().trim(),
-          fonte: 'ReceitaWS',
-        }
-      }
+    const jsonpResult = await consultReceitaWSJsonp(clean, 7000)
+    if (jsonpResult && (jsonpResult.razaoSocial || jsonpResult.nomeFantasia)) {
+      return jsonpResult
     }
   } catch (err) {
-    console.warn('Falha na consulta ReceitaWS fallback:', err)
+    console.warn('Falha na consulta ReceitaWS via JSONP:', err)
   }
 
   throw new Error('CNPJ não encontrado ou serviços de consulta temporariamente indisponíveis.')

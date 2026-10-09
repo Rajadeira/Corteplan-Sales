@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Loader2, Sparkles, Building2, User } from 'lucide-react'
+import { Loader2, Sparkles, Building2, User, Search, CheckCircle2 } from 'lucide-react'
 import { clientService, type CreateClientData } from '@/services/clients'
 import type { ClientRecord, DocumentType } from '@/types'
 import { maskPhoneBR } from '@/types'
@@ -128,15 +128,23 @@ export default function ClientModal({
   }
 
   // Consulta automática de CNPJ
-  const triggerCNPJLookup = async (cnpjToQuery: string) => {
+  const triggerCNPJLookup = async (cnpjToQuery: string, force = false) => {
     const clean = cleanDocument(cnpjToQuery)
-    if (clean.length !== 14) return
+    if (clean.length !== 14) {
+      if (force) {
+        toast.error('Informe um CNPJ com 14 dígitos numéricos para consultar.')
+      }
+      return
+    }
     if (!validateCNPJ(clean)) {
       setErrors((prev) => ({ ...prev, document: 'CNPJ inválido (dígitos verificadores)' }))
+      if (force) {
+        toast.error('CNPJ inválido. Verifique os dígitos informados.')
+      }
       return
     }
 
-    if (lastConsultedCNPJ.current === clean) {
+    if (!force && lastConsultedCNPJ.current === clean) {
       return
     }
 
@@ -150,6 +158,7 @@ export default function ClientModal({
       // Preenchimento automático dos dados retornados
       if (res.razaoSocial) {
         setName(res.razaoSocial)
+        if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }))
       }
       if (res.nomeFantasia) {
         setTradeName(res.nomeFantasia)
@@ -182,12 +191,12 @@ export default function ClientModal({
       }
 
       setAutoFilledSource(res.fonte)
-      toast.success(`Dados preenchidos automaticamente via ${res.fonte}!`)
+      toast.success(`Dados da empresa preenchidos via ${res.fonte}!`)
     } catch (err: unknown) {
       console.warn('Erro ao consultar CNPJ:', err)
       setAutoFilledSource(null)
       toast.warning(
-        'CNPJ não encontrado ou serviço de consulta indisponível. Preencha manualmente.',
+        'CNPJ não encontrado ou serviços de consulta indisponíveis. Você pode preencher os campos manualmente.',
       )
     } finally {
       setIsConsulting(false)
@@ -219,6 +228,16 @@ export default function ClientModal({
 
       if (clean.length === 11 && !validateCPF(clean)) {
         setErrors((prev) => ({ ...prev, document: 'CPF inválido (dígitos incorretos)' }))
+      }
+    }
+  }
+
+  // Consulta também no blur caso o usuário tenha colado ou finalizado a digitação
+  const handleDocumentBlur = () => {
+    if (documentType === 'CNPJ') {
+      const clean = cleanDocument(documentNumber)
+      if (clean.length === 14 && validateCNPJ(clean)) {
+        triggerCNPJLookup(clean)
       }
     }
   }
@@ -389,21 +408,47 @@ export default function ClientModal({
                 )}
               </div>
 
-              <div className="relative">
-                <Input
-                  id="client-document"
-                  placeholder={documentType === 'CNPJ' ? '00.000.000/0000-00' : '000.000.000-00'}
-                  value={documentNumber}
-                  onChange={handleDocumentChange}
-                  className={`${errors.document ? 'border-red-500' : ''} ${
-                    isConsulting ? 'pr-9' : ''
-                  }`}
-                  disabled={loading}
-                />
-                {isConsulting && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <Loader2 className="h-4 w-4 animate-spin text-[#F08A24]" />
-                  </div>
+              <div className="relative flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    id="client-document"
+                    placeholder={documentType === 'CNPJ' ? '00.000.000/0000-00' : '000.000.000-00'}
+                    value={documentNumber}
+                    onChange={handleDocumentChange}
+                    onBlur={handleDocumentBlur}
+                    className={`${errors.document ? 'border-red-500' : ''} ${
+                      isConsulting ? 'pr-9' : ''
+                    }`}
+                    disabled={loading}
+                  />
+                  {isConsulting && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 className="h-4 w-4 animate-spin text-[#F08A24]" />
+                    </div>
+                  )}
+                </div>
+
+                {documentType === 'CNPJ' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => triggerCNPJLookup(documentNumber, true)}
+                    disabled={
+                      loading || isConsulting || cleanDocument(documentNumber).length !== 14
+                    }
+                    title="Buscar dados da empresa pelo CNPJ"
+                    className="shrink-0 h-10 px-3 border-slate-300 text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+                  >
+                    {isConsulting ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-[#F08A24]" />
+                    ) : (
+                      <>
+                        <Search className="h-3.5 w-3.5 mr-1 text-slate-600" />
+                        <span className="hidden sm:inline text-xs font-semibold">Buscar</span>
+                      </>
+                    )}
+                  </Button>
                 )}
               </div>
 
@@ -414,9 +459,10 @@ export default function ClientModal({
               {/* Indicador de preenchimento automático */}
               {autoFilledSource && (
                 <div className="flex items-center gap-1.5 text-[11px] text-emerald-700 font-medium bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                  <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                   <span>
-                    Dados preenchidos automaticamente via consulta CNPJ ({autoFilledSource})
+                    Dados cadastrais carregados automaticamente via consulta CNPJ (
+                    {autoFilledSource})
                   </span>
                 </div>
               )}
