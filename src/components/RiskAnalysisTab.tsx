@@ -292,9 +292,34 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
     }
   }
 
+  // Normalizador defensivo para extrair string de qualquer valor de status (string, objeto, número, etc.)
+  const extractStatusString = (rawStatus: unknown): string => {
+    if (rawStatus === null || rawStatus === undefined) return ''
+    if (typeof rawStatus === 'string') return rawStatus
+    if (typeof rawStatus === 'number' || typeof rawStatus === 'boolean') return String(rawStatus)
+    if (typeof rawStatus === 'object') {
+      const obj = rawStatus as Record<string, unknown>
+      const candidate =
+        obj.status ??
+        obj.situacao ??
+        obj.descricao ??
+        obj.resultado ??
+        obj.mensagem ??
+        obj.label ??
+        obj.value ??
+        obj.name
+      if (typeof candidate === 'string') return candidate
+      if (candidate !== null && candidate !== undefined && typeof candidate !== 'object') {
+        return String(candidate)
+      }
+    }
+    return ''
+  }
+
   // Helper visual para status de certidões (CND / CNDT)
-  const getCertidaoStatusBadge = (statusStr?: string) => {
-    const s = (statusStr || '').toLowerCase()
+  const getCertidaoStatusBadge = (statusStr?: unknown) => {
+    const text = extractStatusString(statusStr)
+    const s = text.toLowerCase()
     if (
       s.includes('negativa') ||
       s.includes('regular') ||
@@ -303,7 +328,7 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
       s.includes('nada consta')
     ) {
       return {
-        label: 'Negativa (Regular)',
+        label: text || 'Negativa (Regular)',
         className: 'bg-emerald-100 text-emerald-800 border-emerald-200',
         icon: 'check',
       }
@@ -312,16 +337,17 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
       s.includes('positiva') ||
       s.includes('irregular') ||
       s.includes('pendência') ||
+      s.includes('debito') ||
       s.includes('débito')
     ) {
       return {
-        label: 'Positiva (Com Débitos)',
+        label: text || 'Positiva (Com Débitos)',
         className: 'bg-red-100 text-red-800 border-red-200',
         icon: 'alert',
       }
     }
     return {
-      label: statusStr || 'Não consultada',
+      label: text || 'Não consultada',
       className: 'bg-slate-100 text-slate-700 border-slate-200',
       icon: 'info',
     }
@@ -567,8 +593,9 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
   }
 
   // Helper visual para Status Cadastral
-  const getStatusCadastralBadge = (statusStr: string) => {
-    const s = (statusStr || '').toUpperCase().trim()
+  const getStatusCadastralBadge = (statusStr: unknown) => {
+    const text = extractStatusString(statusStr)
+    const s = text.toUpperCase().trim()
     const isAtivo = s === 'ATIVA' || s === 'ATIVO'
     if (isAtivo) {
       return {
@@ -595,7 +622,7 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
       }
     }
     return {
-      label: statusStr || 'Indefinido',
+      label: text || 'Indefinido',
       className: 'bg-slate-500 hover:bg-slate-600 text-white font-semibold',
     }
   }
@@ -1079,7 +1106,17 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
 
                   {/* Certidão Negativa Federal (CND) */}
                   {(() => {
-                    const badge = getCertidaoStatusBadge(externalResult.cndFederal?.status)
+                    const badge = getCertidaoStatusBadge(
+                      (externalResult.cndFederal as any)?.status ?? externalResult.cndFederal,
+                    )
+                    const validadeStr =
+                      typeof externalResult.cndFederal?.validade === 'string'
+                        ? externalResult.cndFederal.validade
+                        : ''
+                    const numeroStr =
+                      typeof externalResult.cndFederal?.numero === 'string'
+                        ? externalResult.cndFederal.numero
+                        : ''
                     return (
                       <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col justify-between">
                         <div>
@@ -1098,17 +1135,17 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
                             </Badge>
                           </div>
 
-                          {externalResult.cndFederal?.validade && (
+                          {validadeStr && (
                             <p className="text-xs text-slate-600 mt-2">
                               Validade:{' '}
                               <strong className="font-semibold text-slate-800">
-                                {formatDateBR(externalResult.cndFederal.validade)}
+                                {formatDateBR(validadeStr)}
                               </strong>
                             </p>
                           )}
-                          {externalResult.cndFederal?.numero && (
+                          {numeroStr && (
                             <p className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">
-                              Nº: {externalResult.cndFederal.numero}
+                              Nº: {numeroStr}
                             </p>
                           )}
                         </div>
@@ -1122,7 +1159,17 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
 
                   {/* Certidão Trabalhista (CNDT) */}
                   {(() => {
-                    const badge = getCertidaoStatusBadge(externalResult.cndt?.status)
+                    const badge = getCertidaoStatusBadge(
+                      (externalResult.cndt as any)?.status ?? externalResult.cndt,
+                    )
+                    const validadeStr =
+                      typeof externalResult.cndt?.validade === 'string'
+                        ? externalResult.cndt.validade
+                        : ''
+                    const numeroStr =
+                      typeof externalResult.cndt?.numero === 'string'
+                        ? externalResult.cndt.numero
+                        : ''
                     return (
                       <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col justify-between">
                         <div>
@@ -1141,17 +1188,17 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
                             </Badge>
                           </div>
 
-                          {externalResult.cndt?.validade && (
+                          {validadeStr && (
                             <p className="text-xs text-slate-600 mt-2">
                               Validade:{' '}
                               <strong className="font-semibold text-slate-800">
-                                {formatDateBR(externalResult.cndt.validade)}
+                                {formatDateBR(validadeStr)}
                               </strong>
                             </p>
                           )}
-                          {externalResult.cndt?.numero && (
+                          {numeroStr && (
                             <p className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">
-                              Nº: {externalResult.cndt.numero}
+                              Nº: {numeroStr}
                             </p>
                           )}
                         </div>
@@ -1379,40 +1426,37 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
                           </div>
 
                           <div className="flex items-center gap-2 text-[10px]">
-                            {item.external_cnd_federal?.status && (
-                              <span
-                                className={`px-1.5 py-0.5 rounded-md font-medium truncate ${
-                                  (item.external_cnd_federal.status || '')
-                                    .toLowerCase()
-                                    .includes('negativa') ||
-                                  (item.external_cnd_federal.status || '')
-                                    .toLowerCase()
-                                    .includes('regular')
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : 'bg-red-100 text-red-800'
-                                }`}
-                                title={`CND Federal: ${item.external_cnd_federal.status}`}
-                              >
-                                CND: {item.external_cnd_federal.status.slice(0, 10)}
-                              </span>
-                            )}
-                            {item.external_cndt?.status && (
-                              <span
-                                className={`px-1.5 py-0.5 rounded-md font-medium truncate ${
-                                  (item.external_cndt.status || '')
-                                    .toLowerCase()
-                                    .includes('negativa') ||
-                                  (item.external_cndt.status || '')
-                                    .toLowerCase()
-                                    .includes('regular')
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : 'bg-red-100 text-red-800'
-                                }`}
-                                title={`CNDT Trabalhista: ${item.external_cndt.status}`}
-                              >
-                                CNDT: {item.external_cndt.status.slice(0, 10)}
-                              </span>
-                            )}
+                            {(() => {
+                              const cndText = extractStatusString(
+                                (item.external_cnd_federal as any)?.status ??
+                                  item.external_cnd_federal,
+                              )
+                              if (!cndText) return null
+                              const badge = getCertidaoStatusBadge(cndText)
+                              return (
+                                <span
+                                  className={`px-1.5 py-0.5 rounded-md font-medium truncate ${badge.className}`}
+                                  title={`CND Federal: ${cndText}`}
+                                >
+                                  CND: {cndText.slice(0, 10)}
+                                </span>
+                              )
+                            })()}
+                            {(() => {
+                              const cndtText = extractStatusString(
+                                (item.external_cndt as any)?.status ?? item.external_cndt,
+                              )
+                              if (!cndtText) return null
+                              const badge = getCertidaoStatusBadge(cndtText)
+                              return (
+                                <span
+                                  className={`px-1.5 py-0.5 rounded-md font-medium truncate ${badge.className}`}
+                                  title={`CNDT Trabalhista: ${cndtText}`}
+                                >
+                                  CNDT: {cndtText.slice(0, 10)}
+                                </span>
+                              )
+                            })()}
                           </div>
                         </div>
                       ) : (
