@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-14T17:31:27.357Z",
+  "generatedAt": "2026-10-14T18:24:04.058Z",
   "collections": [
     {
       "name": "users",
@@ -1189,6 +1189,48 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "external_score",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_score_label",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_alerts",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_cnd_federal",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_cndt",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_consulted_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_raw_summary",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

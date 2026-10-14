@@ -13,10 +13,17 @@ import {
   TrendingDown,
   Clock,
   Sparkles,
+  Globe2,
+  FileBadge2,
+  ShieldCheck,
+  CheckCircle2,
+  Settings,
+  HelpCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -32,9 +39,11 @@ import {
   type RiskAnalysisResult,
 } from '@/services/riskAnalysis'
 import { clientService } from '@/services/clients'
-import type { ClientRecord, MonitoredClientRecord, RiskLevel } from '@/types'
-import { formatDateBR, formatCurrencyBRL } from '@/types'
+import { settingsService } from '@/services/settings'
+import type { ClientRecord, MonitoredClientRecord, RiskLevel, ConfereCnpjResponse } from '@/types'
+import { formatDateBR, formatDateTimeBR, formatCurrencyBRL } from '@/types'
 import { useAuth } from '@/contexts/AuthContext'
+import { Link } from 'react-router-dom'
 
 export interface RiskAnalysisTabProps {
   onGoToOrder?: (orderId: string) => void
@@ -42,12 +51,21 @@ export interface RiskAnalysisTabProps {
 
 export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
   const { user } = useAuth()
+  const isAdmin = user?.role === 'Administrador'
 
   // Estados de busca
   const [cnpjInput, setCnpjInput] = useState('')
   const [cnpjError, setCnpjError] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
+  const [isSearchingExternal, setIsSearchingExternal] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+
+  // Status de configuração da API Key do Confere CNPJ
+  const [isConfereKeyConfigured, setIsConfereKeyConfigured] = useState<boolean | null>(null)
+  const [externalError, setExternalError] = useState<string | null>(null)
+
+  // Resultado da pesquisa externa Confere CNPJ
+  const [externalResult, setExternalResult] = useState<ConfereCnpjResponse | null>(null)
 
   // Clientes cadastrados para dropdown / seleção rápida
   const [systemClients, setSystemClients] = useState<ClientRecord[]>([])
@@ -81,17 +99,23 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
     return monitoredList.some((m) => cleanDocument(m.cnpj) === clean)
   }, [consultResult, monitoredList])
 
-  // Carregar lista de clientes do sistema para o seletor
+  // Carregar lista de clientes do sistema para o seletor e verificar chave do Confere CNPJ
   useEffect(() => {
-    async function loadClients() {
+    async function loadInitialData() {
       try {
-        const list = await clientService.getAll()
-        setSystemClients(list)
+        const [clients, confereSettings] = await Promise.all([
+          clientService.getAll(),
+          settingsService.getConfereCnpjSettings(),
+        ])
+        setSystemClients(clients)
+        setIsConfereKeyConfigured(
+          Boolean(confereSettings?.apiKey && confereSettings.apiKey.trim() !== ''),
+        )
       } catch (err) {
-        console.warn('Erro ao carregar clientes do sistema:', err)
+        console.warn('Erro ao carregar dados iniciais de risco:', err)
       }
     }
-    loadClients()
+    loadInitialData()
   }, [])
 
   // Carregar carteira de monitoramento
@@ -119,6 +143,171 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
     if (cl && cl.document_number) {
       setCnpjInput(maskCNPJ(cl.document_number))
       setCnpjError(null)
+      setExternalError(null)
+      setExternalResult(null)
+    }
+  }
+
+  // Realizar a pesquisa externa Confere CNPJ
+  const handleConsultExternal = async () => {
+    if (!consultResult) return
+    const clean = cleanDocument(consultResult.cnpj)
+
+    if (clean.length !== 14) {
+      setCnpjError('CNPJ deve conter 14 dígitos.')
+      return
+    }
+
+    setIsSearchingExternal(true)
+    setExternalError(null)
+
+    try {
+      const resp = await riskAnalysisService.consultConfereCnpj(clean)
+      setExternalResult(resp)
+      setIsConfereKeyConfigured(true)
+
+      // Atualiza ou salva na carteira se já estiver monitorado
+      const existingInList = monitoredList.find((m) => cleanDocument(m.cnpj) === clean)
+      if (existingInList) {
+        await riskAnalysisService.saveMonitored({
+          cnpj: clean,
+          razao_social: consultResult.razaoSocial,
+          nome_fantasia: consultResult.nomeFantasia,
+          risco: riskResult ? riskResult.level : existingInList.risco,
+          risco_motivo: riskResult ? riskResult.reason : existingInList.risco_motivo,
+          situacao_cadastral: consultResult.situacaoCadastral,
+          cnae: consultResult.cnae,
+          cnae_descricao: consultResult.cnaeDescricao,
+          natureza_juridica: consultResult.naturezaJuridicaDescricao,
+          natureza_juridica_codigo: consultResult.naturezaJuridicaCodigo,
+          external_score: resp.score,
+          external_score_label: resp.scoreLabel,
+          external_alerts: resp.alerts,
+          external_cnd_federal: resp.cndFederal,
+          external_cndt: resp.cndt,
+          external_consulted_at: resp.consultedAt,
+          criado_por: user?.id,
+        })
+        loadMonitoredList()
+      }
+
+      toast({
+        title: 'Pesquisa externa concluída!',
+        description: `Score de Confiança e Certidões carregados via Confere CNPJ.`,
+      })
+    } catch (err: any) {
+      console.error('Erro na pesquisa externa Confere CNPJ:', err)
+      const msg = err?.data?.error || err?.message || 'Falha ao conectar com o Confere CNPJ.'
+      setExternalError(msg)
+
+      if (err?.status === 412 || err?.data?.code === 'API_KEY_MISSING') {
+        setIsConfereKeyConfigured(false)
+      }
+
+      toast({
+        title: 'Pesquisa Externa Indisponível',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSearchingExternal(false)
+    }
+  }
+
+  // Helpers de cores para o Score de Confiança do Confere CNPJ (0 a 100)
+  const getExternalScoreBadgeStyles = (score: number | null) => {
+    if (score === null || score === undefined) {
+      return {
+        bgColor: 'bg-slate-100',
+        textColor: 'text-slate-600',
+        borderColor: 'border-slate-300',
+        dotColor: 'bg-slate-400',
+        barColor: 'bg-slate-400',
+        label: 'Não avaliado',
+      }
+    }
+    if (score >= 85) {
+      return {
+        bgColor: 'bg-emerald-50',
+        textColor: 'text-emerald-700',
+        borderColor: 'border-emerald-300',
+        dotColor: 'bg-emerald-500',
+        barColor: 'bg-emerald-500',
+        label: 'Excelente',
+      }
+    }
+    if (score >= 70) {
+      return {
+        bgColor: 'bg-blue-50',
+        textColor: 'text-blue-700',
+        borderColor: 'border-blue-300',
+        dotColor: 'bg-blue-500',
+        barColor: 'bg-blue-500',
+        label: 'Bom',
+      }
+    }
+    if (score >= 50) {
+      return {
+        bgColor: 'bg-amber-50',
+        textColor: 'text-amber-800',
+        borderColor: 'border-amber-300',
+        dotColor: 'bg-amber-500',
+        barColor: 'bg-amber-500',
+        label: 'Moderado',
+      }
+    }
+    if (score >= 30) {
+      return {
+        bgColor: 'bg-orange-50',
+        textColor: 'text-orange-700',
+        borderColor: 'border-orange-300',
+        dotColor: 'bg-orange-500',
+        barColor: 'bg-orange-500',
+        label: 'Baixo',
+      }
+    }
+    return {
+      bgColor: 'bg-red-50',
+      textColor: 'text-red-700',
+      borderColor: 'border-red-300',
+      dotColor: 'bg-red-500',
+      barColor: 'bg-red-500',
+      label: 'Crítico',
+    }
+  }
+
+  // Helper visual para status de certidões (CND / CNDT)
+  const getCertidaoStatusBadge = (statusStr?: string) => {
+    const s = (statusStr || '').toLowerCase()
+    if (
+      s.includes('negativa') ||
+      s.includes('regular') ||
+      s.includes('válida') ||
+      s.includes('valida') ||
+      s.includes('nada consta')
+    ) {
+      return {
+        label: 'Negativa (Regular)',
+        className: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+        icon: 'check',
+      }
+    }
+    if (
+      s.includes('positiva') ||
+      s.includes('irregular') ||
+      s.includes('pendência') ||
+      s.includes('débito')
+    ) {
+      return {
+        label: 'Positiva (Com Débitos)',
+        className: 'bg-red-100 text-red-800 border-red-200',
+        icon: 'alert',
+      }
+    }
+    return {
+      label: statusStr || 'Não consultada',
+      className: 'bg-slate-100 text-slate-700 border-slate-200',
+      icon: 'info',
     }
   }
 
@@ -168,9 +357,28 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
       setConsultResult(resultObj)
       setRiskResult(risk)
 
-      // Se já estava na carteira, atualiza os dados automaticamente
+      // Se já estava na carteira, restaura os dados externos pré-existentes se houver
       const existingInList = monitoredList.find((m) => cleanDocument(m.cnpj) === clean)
       if (existingInList) {
+        if (existingInList.external_score !== undefined || existingInList.external_consulted_at) {
+          setExternalResult({
+            success: true,
+            configured: true,
+            cnpj: clean,
+            razaoSocial: existingInList.razao_social,
+            nomeFantasia: existingInList.nome_fantasia,
+            situacaoCadastral: existingInList.situacao_cadastral || 'ATIVA',
+            score: existingInList.external_score ?? null,
+            scoreLabel: existingInList.external_score_label || 'Consultado anteriormente',
+            alerts: existingInList.external_alerts || [],
+            cndFederal: existingInList.external_cnd_federal || { status: 'Não consultada' },
+            cndt: existingInList.external_cndt || { status: 'Não consultada' },
+            consultedAt: existingInList.external_consulted_at || existingInList.updated,
+          })
+        } else {
+          setExternalResult(null)
+        }
+
         await riskAnalysisService.saveMonitored({
           cnpj: clean,
           razao_social: resultObj.razaoSocial,
@@ -185,6 +393,8 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
           criado_por: user?.id,
         })
         loadMonitoredList()
+      } else {
+        setExternalResult(null)
       }
 
       toast({
@@ -214,7 +424,7 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
     setIsSaving(true)
     try {
       const clean = cleanDocument(consultResult.cnpj)
-      await riskAnalysisService.saveMonitored({
+      const payload: any = {
         cnpj: clean,
         razao_social: consultResult.razaoSocial,
         nome_fantasia: consultResult.nomeFantasia,
@@ -226,8 +436,18 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
         natureza_juridica: consultResult.naturezaJuridicaDescricao,
         natureza_juridica_codigo: consultResult.naturezaJuridicaCodigo,
         criado_por: user?.id,
-      })
+      }
 
+      if (externalResult) {
+        payload.external_score = externalResult.score
+        payload.external_score_label = externalResult.scoreLabel
+        payload.external_alerts = externalResult.alerts
+        payload.external_cnd_federal = externalResult.cndFederal
+        payload.external_cndt = externalResult.cndt
+        payload.external_consulted_at = externalResult.consultedAt
+      }
+
+      await riskAnalysisService.saveMonitored(payload)
       await loadMonitoredList()
 
       toast({
@@ -447,6 +667,7 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
                   onChange={(e) => {
                     setCnpjInput(maskCNPJ(e.target.value))
                     setCnpjError(null)
+                    setExternalError(null)
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
@@ -547,6 +768,93 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
               )}
             </div>
 
+            {/* Barra de Ação Externa: Botão Confere CNPJ */}
+            <div className="bg-white/10 rounded-2xl p-3.5 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-white/15">
+              <div className="flex items-center gap-2.5">
+                <Globe2 className="h-5 w-5 text-[#F08A24] shrink-0" />
+                <div className="text-xs">
+                  <span className="font-bold text-white block">
+                    Pesquisa Externa — Confere CNPJ
+                  </span>
+                  <span className="text-white/80 text-[11px]">
+                    Score de confiança (0–100), certidões CND/CNDT e alertas cadastrais
+                    automatizados.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  onClick={handleConsultExternal}
+                  disabled={isSearchingExternal}
+                  className="rounded-xl bg-[#F08A24] hover:bg-[#d87616] text-white font-bold text-xs h-9 px-4 shadow-sm flex items-center gap-1.5"
+                >
+                  {isSearchingExternal ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      Consultando Confere CNPJ...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="h-3.5 w-3.5" />
+                      Pesquisa Externa (Confere CNPJ)
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Aviso se a API Key não estiver configurada ou erro retornado */}
+            {isConfereKeyConfigured === false && !externalResult && (
+              <div className="bg-amber-500/20 border border-amber-300/40 rounded-2xl p-4 mb-4 flex items-start justify-between gap-3 text-amber-100">
+                <div className="flex items-start gap-2.5 text-xs">
+                  <AlertCircle className="h-4 w-4 text-amber-300 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <strong className="text-white font-semibold block">
+                      Integração Confere CNPJ aguardando configuração da API Key:
+                    </strong>
+                    <p className="text-amber-200 leading-relaxed text-[11px]">
+                      A análise interna continua funcionando normalmente. Para enriquecer com Score
+                      de Confiança 0–100, CND Federal e CNDT, o Administrador deve cadastrar a API
+                      Key em Configurações.
+                    </p>
+                  </div>
+                </div>
+                {isAdmin && (
+                  <Link to="/configuracoes">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="bg-white/10 hover:bg-white/20 text-white border-white/30 text-xs h-8 rounded-xl shrink-0 gap-1.5"
+                    >
+                      <Settings className="h-3.5 w-3.5 text-[#F08A24]" />
+                      Configurações
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            )}
+
+            {externalError && (
+              <div className="bg-red-500/20 border border-red-300/40 rounded-2xl p-3.5 mb-4 text-xs text-red-100 flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-300 shrink-0 mt-0.5" />
+                  <span>{externalError}</span>
+                </div>
+                {isAdmin && externalError.includes('Configurações') && (
+                  <Link to="/configuracoes">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="bg-white/10 hover:bg-white/20 text-white border-white/30 text-xs h-7 rounded-lg shrink-0"
+                    >
+                      Ir para Configurações
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            )}
+
             {/* Bloco Branco Arredondado Interno: Dados Cadastrais com Rótulos Pequenos em Maiúsculas */}
             <div className="bg-white text-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
               {/* NOME FANTASIA */}
@@ -615,15 +923,23 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
 
             {/* Dois Cards Lado a Lado: Risco de Inadimplência e Status Cadastral */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mt-4">
-              {/* Card 1: RISCO DE INADIMPLÊNCIA */}
+              {/* Card 1: RISCO DE INADIMPLÊNCIA (INTERNO) */}
               {(() => {
                 const styles = getRiskBadgeStyles(riskResult.level)
                 return (
                   <div className="bg-white text-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
                     <div>
-                      <span className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2.5">
-                        RISCO DE INADIMPLÊNCIA
-                      </span>
+                      <div className="flex items-center justify-between gap-2 mb-2.5">
+                        <span className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                          RISCO INTERNO (FLUXO / RECEITA)
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] text-slate-500 border-slate-200"
+                        >
+                          Interno
+                        </Badge>
+                      </div>
                       <div className="flex items-center gap-2">
                         <span className={`h-3 w-3 rounded-full shrink-0 ${styles.dotColor}`} />
                         <span className="text-sm sm:text-base font-bold text-slate-800">
@@ -644,15 +960,23 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
                 )
               })()}
 
-              {/* Card 2: STATUS CADASTRAL */}
+              {/* Card 2: STATUS CADASTRAL (RECEITA FEDERAL) */}
               {(() => {
                 const badge = getStatusCadastralBadge(consultResult.situacaoCadastral)
                 return (
                   <div className="bg-white text-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
                     <div>
-                      <span className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2.5">
-                        STATUS CADASTRAL
-                      </span>
+                      <div className="flex items-center justify-between gap-2 mb-2.5">
+                        <span className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                          STATUS CADASTRAL
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] text-slate-500 border-slate-200"
+                        >
+                          Receita Federal
+                        </Badge>
+                      </div>
                       <div>
                         <span
                           className={`inline-block px-5 py-1.5 rounded-full text-xs sm:text-sm shadow-xs ${badge.className}`}
@@ -674,6 +998,185 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
                 )
               })()}
             </div>
+
+            {/* SEÇÃO EXTERNA CONFERE CNPJ (QUANDO DISPONÍVEL) */}
+            {externalResult && (
+              <div className="mt-4 bg-white text-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-200 space-y-4 animate-in fade-in-50">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <Globe2 className="h-4 w-4 text-[#F08A24]" />
+                    <h3 className="font-bold text-sm sm:text-base text-slate-900">
+                      Resultado da Análise Externa (Confere CNPJ)
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <Clock className="h-3.5 w-3.5 text-slate-400" />
+                    <span>Consultado em: {formatDateTimeBR(externalResult.consultedAt)}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Card do Score de Confiança 0-100 */}
+                  {(() => {
+                    const styles = getExternalScoreBadgeStyles(externalResult.score)
+                    return (
+                      <div
+                        className={`p-4 rounded-xl border ${styles.borderColor} ${styles.bgColor} flex flex-col justify-between`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-1 mb-2">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                              Score de Confiança
+                            </span>
+                            <span
+                              className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${styles.bgColor} ${styles.textColor} border ${styles.borderColor}`}
+                            >
+                              {externalResult.scoreLabel || styles.label}
+                            </span>
+                          </div>
+
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-3xl font-extrabold font-mono text-slate-900">
+                              {externalResult.score !== null ? externalResult.score : '—'}
+                            </span>
+                            <span className="text-xs font-semibold text-slate-400">/ 100</span>
+                          </div>
+
+                          {/* Barra visual de progresso */}
+                          <div className="w-full bg-slate-200/80 rounded-full h-2 mt-3 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${styles.barColor}`}
+                              style={{
+                                width: `${Math.min(100, Math.max(0, externalResult.score || 0))}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        <p className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-slate-200/60">
+                          Baseado em situação cadastral, capital social, CNAE, tempo de existência e
+                          certidões.
+                        </p>
+                      </div>
+                    )
+                  })()}
+
+                  {/* Certidão Negativa Federal (CND) */}
+                  {(() => {
+                    const badge = getCertidaoStatusBadge(externalResult.cndFederal?.status)
+                    return (
+                      <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between gap-1 mb-2">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                              CND Federal (Receita/PGFN)
+                            </span>
+                            <FileBadge2 className="h-4 w-4 text-slate-400" />
+                          </div>
+
+                          <div className="mt-1">
+                            <Badge
+                              className={`text-xs font-semibold py-1 px-2.5 ${badge.className}`}
+                            >
+                              {badge.label}
+                            </Badge>
+                          </div>
+
+                          {externalResult.cndFederal?.validade && (
+                            <p className="text-xs text-slate-600 mt-2">
+                              Validade:{' '}
+                              <strong className="font-semibold text-slate-800">
+                                {formatDateBR(externalResult.cndFederal.validade)}
+                              </strong>
+                            </p>
+                          )}
+                          {externalResult.cndFederal?.numero && (
+                            <p className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">
+                              Nº: {externalResult.cndFederal.numero}
+                            </p>
+                          )}
+                        </div>
+
+                        <span className="text-[10px] text-slate-400 mt-3 pt-2 border-t border-slate-200/60">
+                          Débitos tributários federais e Dívida Ativa
+                        </span>
+                      </div>
+                    )
+                  })()}
+
+                  {/* Certidão Trabalhista (CNDT) */}
+                  {(() => {
+                    const badge = getCertidaoStatusBadge(externalResult.cndt?.status)
+                    return (
+                      <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between gap-1 mb-2">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                              CNDT (Justiça do Trabalho)
+                            </span>
+                            <ShieldCheck className="h-4 w-4 text-slate-400" />
+                          </div>
+
+                          <div className="mt-1">
+                            <Badge
+                              className={`text-xs font-semibold py-1 px-2.5 ${badge.className}`}
+                            >
+                              {badge.label}
+                            </Badge>
+                          </div>
+
+                          {externalResult.cndt?.validade && (
+                            <p className="text-xs text-slate-600 mt-2">
+                              Validade:{' '}
+                              <strong className="font-semibold text-slate-800">
+                                {formatDateBR(externalResult.cndt.validade)}
+                              </strong>
+                            </p>
+                          )}
+                          {externalResult.cndt?.numero && (
+                            <p className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">
+                              Nº: {externalResult.cndt.numero}
+                            </p>
+                          )}
+                        </div>
+
+                        <span className="text-[10px] text-slate-400 mt-3 pt-2 border-t border-slate-200/60">
+                          Banco Nacional de Devedores Trabalhistas (TST)
+                        </span>
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                {/* Alertas Automáticos retornados pelo Confere CNPJ */}
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-2">
+                    Alertas Automáticos &amp; Pontos de Atenção
+                  </span>
+                  {externalResult.alerts && externalResult.alerts.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {externalResult.alerts.map((alert, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-start gap-2 p-2.5 bg-amber-50/60 border border-amber-200/70 rounded-xl text-xs text-amber-900"
+                        >
+                          <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                          <span>{alert.texto}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-emerald-50/60 border border-emerald-200/60 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>
+                        Nenhum alerta crítico ou sinal de risco extraordinário detectado pela
+                        análise externa.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Resumo Complementar de Parcelas do Sistema Interno */}
@@ -839,17 +1342,81 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
                         {maskCNPJ(item.cnpj)}
                       </div>
 
-                      {/* Motivo do Risco */}
+                      {/* Motivo do Risco Interno */}
                       {item.risco_motivo && (
                         <p className="text-[11px] text-slate-500 mt-2 line-clamp-2 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
                           {item.risco_motivo}
                         </p>
                       )}
+
+                      {/* Dados da Análise Externa (Confere CNPJ) salvos no cliente */}
+                      {item.external_score !== undefined && item.external_score !== null ? (
+                        <div className="mt-3 p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1">
+                              <Globe2 className="h-3 w-3 text-[#F08A24]" />
+                              Confere CNPJ
+                            </span>
+                            <span className="text-xs font-mono font-extrabold text-slate-800">
+                              Score: {item.external_score}/100
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-[10px]">
+                            {item.external_cnd_federal?.status && (
+                              <span
+                                className={`px-1.5 py-0.5 rounded-md font-medium truncate ${
+                                  (item.external_cnd_federal.status || '')
+                                    .toLowerCase()
+                                    .includes('negativa') ||
+                                  (item.external_cnd_federal.status || '')
+                                    .toLowerCase()
+                                    .includes('regular')
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}
+                                title={`CND Federal: ${item.external_cnd_federal.status}`}
+                              >
+                                CND: {item.external_cnd_federal.status.slice(0, 10)}
+                              </span>
+                            )}
+                            {item.external_cndt?.status && (
+                              <span
+                                className={`px-1.5 py-0.5 rounded-md font-medium truncate ${
+                                  (item.external_cndt.status || '')
+                                    .toLowerCase()
+                                    .includes('negativa') ||
+                                  (item.external_cndt.status || '')
+                                    .toLowerCase()
+                                    .includes('regular')
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}
+                                title={`CNDT Trabalhista: ${item.external_cndt.status}`}
+                              >
+                                CNDT: {item.external_cndt.status.slice(0, 10)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-2.5 flex items-center gap-1 text-[10px] text-slate-400">
+                          <HelpCircle className="h-3 w-3" />
+                          <span>Sem pesquisa Confere CNPJ realizada</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Rodapé do Card: Data de Consulta + Ações */}
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                      <span className="flex items-center gap-1">
+                      <span
+                        className="flex items-center gap-1"
+                        title={
+                          item.external_consulted_at
+                            ? `Última externa: ${formatDateBR(item.external_consulted_at)}`
+                            : undefined
+                        }
+                      >
                         <Calendar className="h-3 w-3 text-slate-400" />
                         {item.ultima_consulta
                           ? formatDateBR(item.ultima_consulta)

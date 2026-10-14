@@ -36,6 +36,13 @@ export interface MonitoredClientPayload {
   natureza_juridica_codigo?: string
   ultima_consulta?: string
   criado_por?: string
+  external_score?: number | null
+  external_score_label?: string
+  external_alerts?: import('@/types').ConfereCnpjAlert[]
+  external_cnd_federal?: import('@/types').ConfereCndInfo
+  external_cndt?: import('@/types').ConfereCndInfo
+  external_consulted_at?: string
+  external_raw_summary?: unknown
 }
 
 /**
@@ -246,10 +253,30 @@ export const riskAnalysisService = {
     const cleanCnpj = cleanDocument(data.cnpj)
     const existing = await this.findByCnpj(cleanCnpj)
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       ...data,
       cnpj: cleanCnpj,
       ultima_consulta: data.ultima_consulta || new Date().toISOString(),
+    }
+
+    // Se external_score não foi passado ou é nulo, preserva se já existia no registro
+    if (data.external_score === undefined && existing?.external_score !== undefined) {
+      payload.external_score = existing.external_score
+    }
+    if (data.external_score_label === undefined && existing?.external_score_label !== undefined) {
+      payload.external_score_label = existing.external_score_label
+    }
+    if (data.external_alerts === undefined && existing?.external_alerts !== undefined) {
+      payload.external_alerts = existing.external_alerts
+    }
+    if (data.external_cnd_federal === undefined && existing?.external_cnd_federal !== undefined) {
+      payload.external_cnd_federal = existing.external_cnd_federal
+    }
+    if (data.external_cndt === undefined && existing?.external_cndt !== undefined) {
+      payload.external_cndt = existing.external_cndt
+    }
+    if (data.external_consulted_at === undefined && existing?.external_consulted_at !== undefined) {
+      payload.external_consulted_at = existing.external_consulted_at
     }
 
     if (existing) {
@@ -262,6 +289,19 @@ export const riskAnalysisService = {
 
     return pb.collection('monitored_clients').create<MonitoredClientRecord>(payload, {
       expand: 'criado_por',
+    })
+  },
+
+  /**
+   * Executa a pesquisa externa segura no Confere CNPJ através do backend
+   */
+  async consultConfereCnpj(cnpj: string): Promise<import('@/types').ConfereCnpjResponse> {
+    const clean = cleanDocument(cnpj)
+    if (clean.length !== 14) {
+      throw new Error('CNPJ inválido para consulta externa.')
+    }
+    return pb.send<import('@/types').ConfereCnpjResponse>(`/backend/v1/confere-cnpj/${clean}`, {
+      method: 'GET',
     })
   },
 

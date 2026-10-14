@@ -22,7 +22,7 @@ import { quoteService } from '@/services/quotes'
 import { orderService } from '@/services/orders'
 import { clientService } from '@/services/clients'
 import { itemService } from '@/services/items'
-import type { CompanySettings, TaxSettings, NfeSettings } from '@/types'
+import type { CompanySettings, TaxSettings, NfeSettings, ConfereCnpjSettings } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -47,6 +47,7 @@ export default function SettingsPage() {
   const [savingTaxes, setSavingTaxes] = useState(false)
   const [savingSeq, setSavingSeq] = useState(false)
   const [savingNfe, setSavingNfe] = useState(false)
+  const [savingConfere, setSavingConfere] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [lastQuoteNum, setLastQuoteNum] = useState<number>(140)
@@ -60,6 +61,11 @@ export default function SettingsPage() {
     companyId: '',
     series: '1',
     autoIssueOnCompletedOrder: true,
+  })
+
+  // Confere CNPJ Form
+  const [confereConfig, setConfereConfig] = useState<ConfereCnpjSettings>({
+    apiKey: '',
   })
 
   // Company Form
@@ -93,13 +99,15 @@ export default function SettingsPage() {
     async function loadData() {
       try {
         setLoading(true)
-        const [compData, taxData, quoteSeqVal, orderSeqVal, nfeData] = await Promise.all([
-          settingsService.getCompanySettings(),
-          settingsService.getTaxSettings(),
-          settingsService.getByKey<number>('last_quote_number'),
-          settingsService.getByKey<number>('last_order_number'),
-          settingsService.getNfeSettings(),
-        ])
+        const [compData, taxData, quoteSeqVal, orderSeqVal, nfeData, confereData] =
+          await Promise.all([
+            settingsService.getCompanySettings(),
+            settingsService.getTaxSettings(),
+            settingsService.getByKey<number>('last_quote_number'),
+            settingsService.getByKey<number>('last_order_number'),
+            settingsService.getNfeSettings(),
+            settingsService.getConfereCnpjSettings(),
+          ])
         if (compData) setCompany(compData)
         if (taxData) setTaxes(taxData)
         if (quoteSeqVal !== null && quoteSeqVal !== undefined) {
@@ -109,6 +117,7 @@ export default function SettingsPage() {
           setLastOrderNum(Number(orderSeqVal))
         }
         if (nfeData) setNfeConfig(nfeData)
+        if (confereData) setConfereConfig(confereData)
       } catch (err) {
         console.error('Erro ao carregar configurações:', err)
       } finally {
@@ -190,6 +199,33 @@ export default function SettingsPage() {
       })
     } finally {
       setSavingNfe(false)
+    }
+  }
+
+  const handleSaveConfere = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!isAdmin) return
+    try {
+      setSavingConfere(true)
+      await settingsService.saveConfereCnpjSettings({
+        apiKey: confereConfig.apiKey.trim(),
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.email || user?.name || 'Administrador',
+      })
+      toast({
+        title: 'Configurações do Confere CNPJ Salvas',
+        description: confereConfig.apiKey.trim()
+          ? 'API Key do Confere CNPJ configurada com sucesso. A Análise de Risco já pode realizar pesquisas externas.'
+          : 'Configuração salva. A API Key está vazia — o sistema continuará operando com a análise interna.',
+      })
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar',
+        description: err.message || 'Falha ao salvar a API Key do Confere CNPJ.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingConfere(false)
     }
   }
 
@@ -367,6 +403,10 @@ export default function SettingsPage() {
           <TabsTrigger value="nfe" className="flex items-center gap-2">
             <FileSpreadsheet className="h-4 w-4 text-[#F08A24]" />
             Nota Fiscal
+          </TabsTrigger>
+          <TabsTrigger value="confere" className="flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-[#F08A24]" />
+            Confere CNPJ (Risco)
           </TabsTrigger>
           <TabsTrigger value="backup" className="flex items-center gap-2">
             <Database className="h-4 w-4" />
@@ -898,6 +938,146 @@ export default function SettingsPage() {
                 >
                   <Save className="h-4 w-4 text-[#F08A24]" />
                   {savingNfe ? 'Salvando...' : 'Salvar Configurações de NF-e'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </TabsContent>
+
+        {/* TAB: CONFERE CNPJ (ANÁLISE DE RISCO EXTERNA) */}
+        <TabsContent value="confere">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-orange-50 text-[#F08A24] rounded-lg">
+                  <ShieldAlert className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900 text-base">
+                    Integração com Confere CNPJ (Análise de Risco &amp; Certidões)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Permite ao Administrador realizar consultas completas com Score de Confiança
+                    (0–100), alertas cadastrais, CND Federal e CNDT diretamente na Análise de Risco.
+                  </p>
+                </div>
+              </div>
+              <div>
+                {confereConfig.apiKey.trim() ? (
+                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold">
+                    API Key Configurada
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-300">
+                    Aguardando API Key
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {/* Guia de instruções e link oficial */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+              <div className="flex items-start gap-2.5">
+                <KeyRound className="h-4 w-4 text-[#F08A24] shrink-0 mt-0.5" />
+                <div className="text-xs text-slate-700 leading-relaxed space-y-1.5">
+                  <strong className="font-bold text-slate-900 block">
+                    Como obter e configurar sua API Key:
+                  </strong>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-600">
+                    <li>
+                      Crie sua conta ou faça login no portal oficial{' '}
+                      <a
+                        href="https://conferecnpj.com.br/login?callbackUrl=/perfil"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#E66812] font-semibold hover:underline inline-flex items-center gap-0.5"
+                      >
+                        conferecnpj.com.br
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </li>
+                    <li>
+                      Acesse a aba <strong>Minha conta &rarr; API</strong>, compre o pacote de
+                      consultas desejado via PIX e gere uma nova API Key de produção.
+                    </li>
+                    <li>
+                      Copie a chave gerada e cole no campo abaixo. Ela é armazenada de forma segura
+                      no banco de dados e nunca trafega pelo navegador.
+                    </li>
+                  </ol>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-200/60 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  Score de Confiança 0–100
+                </span>
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  Alertas de Risco &amp; CNAE
+                </span>
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  CND Federal (Receita/PGFN)
+                </span>
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  CNDT Trabalhista
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveConfere} className="space-y-6">
+              <div className="space-y-2">
+                <Label
+                  htmlFor="confere_api_key"
+                  className="flex items-center gap-1.5 font-semibold text-slate-800"
+                >
+                  <KeyRound className="h-4 w-4 text-amber-600" />
+                  API Key do Confere CNPJ (Bearer Token)
+                </Label>
+                <Input
+                  id="confere_api_key"
+                  type="password"
+                  placeholder="Cole aqui a sua API Key gerada no Confere CNPJ..."
+                  value={confereConfig.apiKey}
+                  onChange={(e) => setConfereConfig({ ...confereConfig, apiKey: e.target.value })}
+                  className="font-mono text-xs sm:text-sm rounded-xl h-11"
+                />
+                <p className="text-xs text-slate-500">
+                  Enquanto este campo estiver vazio, a tela de Análise de Risco continuará operando
+                  normalmente com os dados cadastrais da Receita e o histórico interno do fluxo de
+                  caixa, exibindo um aviso orientando a configuração.
+                </p>
+              </div>
+
+              {confereConfig.updatedAt && (
+                <p className="text-[11px] text-slate-400">
+                  Última atualização em:{' '}
+                  <strong>{new Date(confereConfig.updatedAt).toLocaleString('pt-BR')}</strong>
+                  {confereConfig.updatedBy ? ` por ${confereConfig.updatedBy}` : ''}
+                </p>
+              )}
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <a
+                  href="https://conferecnpj.com.br/api-para-desenvolvedores"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-[#E66812] hover:underline flex items-center gap-1 font-medium"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Documentação da API Confere CNPJ
+                </a>
+
+                <Button
+                  type="submit"
+                  disabled={savingConfere}
+                  className="bg-[#3A3A3C] hover:bg-[#2E2E30] text-white gap-2 rounded-xl"
+                >
+                  <Save className="h-4 w-4 text-[#F08A24]" />
+                  {savingConfere ? 'Salvando...' : 'Salvar API Key do Confere CNPJ'}
                 </Button>
               </div>
             </form>

@@ -527,6 +527,45 @@ export function maskPhoneBR(value: string): string {
 
 export type RiskLevel = 'Baixo' | 'Médio' | 'Alto' | 'Altíssimo' | 'Sem histórico'
 
+export interface ConfereCnpjAlert {
+  texto: string
+  tipo?: string
+}
+
+export interface ConfereCndInfo {
+  status: string
+  validade?: string
+  numero?: string
+  raw?: unknown
+}
+
+export interface ConfereCnpjResponse {
+  success: boolean
+  configured: boolean
+  consultationId?: string | null
+  consultedAt: string
+  cnpj: string
+  razaoSocial: string
+  nomeFantasia?: string
+  situacaoCadastral: string
+  score: number | null
+  scoreLabel: string
+  alerts: ConfereCnpjAlert[]
+  cndFederal: ConfereCndInfo
+  cndt: ConfereCndInfo
+  creditsRemaining?: number | null
+  rawSummary?: {
+    step1Status?: number
+    step2Status?: number
+  }
+}
+
+export interface ConfereCnpjSettings {
+  apiKey: string
+  updatedAt?: string
+  updatedBy?: string
+}
+
 export interface MonitoredClientRecord extends RecordModel {
   cnpj: string
   razao_social: string
@@ -540,6 +579,13 @@ export interface MonitoredClientRecord extends RecordModel {
   natureza_juridica_codigo?: string
   ultima_consulta?: string
   criado_por?: string
+  external_score?: number
+  external_score_label?: string
+  external_alerts?: ConfereCnpjAlert[]
+  external_cnd_federal?: ConfereCndInfo
+  external_cndt?: ConfereCndInfo
+  external_consulted_at?: string
+  external_raw_summary?: unknown
   expand?: {
     criado_por?: AppUserRecord
     [key: string]: unknown

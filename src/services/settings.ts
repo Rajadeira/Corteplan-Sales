@@ -58,4 +58,20 @@ export const settingsService = {
   async saveNfeSettings(data: import('@/types').NfeSettings): Promise<AppSettingRecord> {
     return this.setByKey('nfe_settings', data, 'Configurações de integração de emissão de NF-e')
   },
+
+  async getConfereCnpjSettings(): Promise<import('@/types').ConfereCnpjSettings | null> {
+    return this.getByKey('confere_cnpj_settings') as Promise<
+      import('@/types').ConfereCnpjSettings | null
+    >
+  },
+
+  async saveConfereCnpjSettings(
+    data: import('@/types').ConfereCnpjSettings,
+  ): Promise<AppSettingRecord> {
+    return this.setByKey(
+      'confere_cnpj_settings',
+      data,
+      'Configurações da integração com Confere CNPJ (API Key e parâmetros)',
+    )
+  },
 }
