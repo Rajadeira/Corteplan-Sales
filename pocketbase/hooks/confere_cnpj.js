@@ -439,6 +439,89 @@ routerAdd(
       },
     }
 
+    // Persistir automaticamente histórico em risk_inquiries evitando duplicação no mesmo minuto
+    let savedInquiryId = null
+    try {
+      const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString()
+      const recentDuplicates = $app.findRecordsByFilter(
+        'risk_inquiries',
+        'cnpj = {:cnpj} && source = "external" && created >= {:cutoff}',
+        '-created',
+        1,
+        0,
+        { cnpj: clean, cutoff: oneMinuteAgo },
+      )
+
+      if (recentDuplicates.length > 0) {
+        savedInquiryId = recentDuplicates[0].id
+      } else {
+        const inquiriesCol = $app.findCollectionByNameOrId('risk_inquiries')
+        const inqRecord = new Record(inquiriesCol)
+
+        // Tentar vincular com client ou monitored_client correspondente se existir
+        let clientId = null
+        try {
+          const matchedClients = $app.findRecordsByFilter(
+            'clients',
+            'document_number ~ {:clean}',
+            '-created',
+            1,
+            0,
+            { clean: clean },
+          )
+          if (matchedClients.length > 0) {
+            clientId = matchedClients[0].id
+          }
+        } catch (_) {}
+
+        let monitoredClientId = null
+        try {
+          const matchedMonitored = $app.findRecordsByFilter(
+            'monitored_clients',
+            'cnpj = {:clean}',
+            '-created',
+            1,
+            0,
+            { clean: clean },
+          )
+          if (matchedMonitored.length > 0) {
+            monitoredClientId = matchedMonitored[0].id
+          }
+        } catch (_) {}
+
+        if (clientId) inqRecord.set('client', clientId)
+        if (monitoredClientId) inqRecord.set('monitored_client', monitoredClientId)
+        inqRecord.set('cnpj', clean)
+        inqRecord.set('razao_social', normalized.razaoSocial || 'NÃO INFORMADA')
+        inqRecord.set('nome_fantasia', normalized.nomeFantasia || '')
+        inqRecord.set('source', 'external')
+        if (score !== null) {
+          inqRecord.set('external_score', score)
+        }
+        inqRecord.set('external_score_label', scoreLabel)
+        inqRecord.set('external_alerts', alerts)
+        inqRecord.set('cnd_federal', normalized.cndFederal)
+        inqRecord.set('cndt', normalized.cndt)
+        inqRecord.set('situation', {
+          situacao: normalized.situacaoCadastral,
+          cnae: cnpjData.cnae_fiscal || cnpjData.cnae || '',
+          cnae_descricao: cnpjData.cnae_fiscal_descricao || cnpjData.cnae_descricao || '',
+          natureza_juridica: cnpjData.natureza_juridica || '',
+        })
+        inqRecord.set('raw_summary', JSON.stringify(normalized.rawSummary))
+        if (auth && auth.id) {
+          inqRecord.set('requested_by', auth.id)
+        }
+
+        $app.save(inqRecord)
+        savedInquiryId = inqRecord.id
+      }
+    } catch (saveErr) {
+      console.warn('Aviso: falha ao persistir risk_inquiries no hook confere_cnpj:', saveErr)
+    }
+
+    normalized.inquiryId = savedInquiryId
+
     return e.json(200, normalized)
   },
   $apis.requireAuth(),

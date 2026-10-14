@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-14T18:47:01.668Z",
+  "generatedAt": "2026-10-14T18:52:28.128Z",
   "collections": [
     {
       "name": "users",
@@ -1236,6 +1236,143 @@
       "indexes": [
         "CREATE UNIQUE INDEX idx_monitored_clients_cnpj ON monitored_clients (cnpj)",
         "CREATE INDEX idx_monitored_clients_risco ON monitored_clients (risco)"
+      ]
+    },
+    {
+      "name": "risk_inquiries",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.role = \"Administrador\"",
+        "view": "@request.auth.role = \"Administrador\"",
+        "create": "@request.auth.role = \"Administrador\"",
+        "update": "@request.auth.role = \"Administrador\"",
+        "delete": "@request.auth.role = \"Administrador\""
+      },
+      "fields": [
+        {
+          "name": "client",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "clients"
+        },
+        {
+          "name": "monitored_client",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "monitored_clients"
+        },
+        {
+          "name": "cnpj",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "razao_social",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "nome_fantasia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "source",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["internal", "external"]
+        },
+        {
+          "name": "internal_score",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "internal_score_label",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "internal_reasons",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_score",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_score_label",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_alerts",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cnd_federal",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cndt",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "situation",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "raw_summary",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "requested_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_risk_inquiries_created ON risk_inquiries (created DESC)",
+        "CREATE INDEX idx_risk_inquiries_cnpj ON risk_inquiries (cnpj)"
       ]
     }
   ]

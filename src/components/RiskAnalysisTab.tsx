@@ -11,6 +11,7 @@ import {
   Calendar,
   AlertCircle,
   TrendingDown,
+  TrendingUp,
   Clock,
   Sparkles,
   Globe2,
@@ -19,6 +20,11 @@ import {
   CheckCircle2,
   Settings,
   HelpCircle,
+  History,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  Eye,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,10 +46,17 @@ import {
 } from '@/services/riskAnalysis'
 import { clientService } from '@/services/clients'
 import { settingsService } from '@/services/settings'
-import type { ClientRecord, MonitoredClientRecord, RiskLevel, ConfereCnpjResponse } from '@/types'
+import type {
+  ClientRecord,
+  MonitoredClientRecord,
+  RiskLevel,
+  ConfereCnpjResponse,
+  RiskInquiryRecord,
+} from '@/types'
 import { formatDateBR, formatDateTimeBR, formatCurrencyBRL } from '@/types'
 import { useAuth } from '@/contexts/AuthContext'
 import { Link } from 'react-router-dom'
+import { RiskInquiryDetailModal } from '@/components/RiskInquiryDetailModal'
 
 export interface RiskAnalysisTabProps {
   onGoToOrder?: (orderId: string) => void
@@ -92,6 +105,26 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
   const [monitoredFilter, setMonitoredFilter] = useState('')
   const [reconsultingCnpj, setReconsultingCnpj] = useState<string | null>(null)
 
+  // Histórico de Pesquisas (risk_inquiries)
+  const [inquiriesList, setInquiriesList] = useState<RiskInquiryRecord[]>([])
+  const [isLoadingInquiries, setIsLoadingInquiries] = useState(false)
+  const [inquiriesPage, setInquiriesPage] = useState(1)
+  const [inquiriesTotalPages, setInquiriesTotalPages] = useState(1)
+  const [inquiriesTotalItems, setInquiriesTotalItems] = useState(0)
+  const [inquirySearch, setInquirySearch] = useState('')
+  const [inquirySourceFilter, setInquirySourceFilter] = useState<'all' | 'internal' | 'external'>(
+    'all',
+  )
+  const [inquiryClientFilter, setInquiryClientFilter] = useState<string>('all')
+
+  // Detalhe / Modal de Consulta
+  const [selectedInquiryDetail, setSelectedInquiryDetail] = useState<RiskInquiryRecord | null>(null)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+
+  // Histórico específico do CNPJ consultado atualmente (para timeline / evolução de scores)
+  const [currentCnpjHistory, setCurrentCnpjHistory] = useState<RiskInquiryRecord[]>([])
+  const [lastCreatedInquiryId, setLastCreatedInquiryId] = useState<string | null>(null)
+
   // Feedback se o CNPJ atual está na carteira
   const isCurrentlyMonitored = useMemo(() => {
     if (!consultResult) return false
@@ -131,9 +164,68 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
     }
   }, [])
 
+  // Carregar histórico de pesquisas com paginação e filtros
+  const loadInquiries = useCallback(async () => {
+    setIsLoadingInquiries(true)
+    try {
+      const filters: string[] = []
+
+      if (inquirySearch.trim()) {
+        const clean = cleanDocument(inquirySearch)
+        const q = inquirySearch.trim()
+        if (clean) {
+          filters.push(`(cnpj ~ "${clean}" || razao_social ~ "${q}" || nome_fantasia ~ "${q}")`)
+        } else {
+          filters.push(`(razao_social ~ "${q}" || nome_fantasia ~ "${q}")`)
+        }
+      }
+
+      if (inquirySourceFilter !== 'all') {
+        filters.push(`source = "${inquirySourceFilter}"`)
+      }
+
+      if (inquiryClientFilter !== 'all') {
+        filters.push(`client = "${inquiryClientFilter}"`)
+      }
+
+      const res = await riskAnalysisService.listInquiries({
+        page: inquiriesPage,
+        perPage: 10,
+        filter: filters.join(' && '),
+      })
+
+      setInquiriesList(res.items)
+      setInquiriesTotalPages(res.totalPages)
+      setInquiriesTotalItems(res.totalItems)
+    } catch (err) {
+      console.warn('Erro ao carregar histórico de pesquisas:', err)
+    } finally {
+      setIsLoadingInquiries(false)
+    }
+  }, [inquiriesPage, inquirySearch, inquirySourceFilter, inquiryClientFilter])
+
   useEffect(() => {
     loadMonitoredList()
   }, [loadMonitoredList])
+
+  useEffect(() => {
+    loadInquiries()
+  }, [loadInquiries])
+
+  // Carregar histórico prévio do CNPJ consultado atualmente
+  const loadCurrentCnpjHistory = useCallback(async (cnpj: string) => {
+    const clean = cleanDocument(cnpj)
+    if (!clean) {
+      setCurrentCnpjHistory([])
+      return
+    }
+    try {
+      const history = await riskAnalysisService.getInquiriesByCnpj(clean, 10)
+      setCurrentCnpjHistory(history)
+    } catch (err) {
+      console.warn('Erro ao carregar histórico prévio do CNPJ:', err)
+    }
+  }, [])
 
   // Ao selecionar um cliente no dropdown
   const handleSelectClient = (clientId: string) => {
@@ -165,6 +257,9 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
       const resp = await riskAnalysisService.consultConfereCnpj(clean)
       setExternalResult(resp)
       setIsConfereKeyConfigured(true)
+      if (resp.inquiryId) {
+        setLastCreatedInquiryId(resp.inquiryId)
+      }
 
       // Atualiza ou salva na carteira se já estiver monitorado
       const existingInList = monitoredList.find((m) => cleanDocument(m.cnpj) === clean)
@@ -191,9 +286,13 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
         loadMonitoredList()
       }
 
+      // Recarrega o histórico geral de consultas e a evolução do CNPJ
+      loadInquiries()
+      loadCurrentCnpjHistory(clean)
+
       toast({
-        title: 'Pesquisa externa concluída!',
-        description: `Score de Confiança e Certidões carregados via Confere CNPJ.`,
+        title: 'Pesquisa externa concluída e salva no histórico!',
+        description: `Score de Confiança e Certidões gravados com sucesso.`,
       })
     } catch (err: any) {
       console.error('Erro na pesquisa externa Confere CNPJ:', err)
@@ -399,10 +498,29 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
       setConsultResult(resultObj)
       setRiskResult(risk)
 
+      // Localizar id do cliente se cadastrado no sistema
+      const matchedClient = systemClients.find(
+        (c) =>
+          c.id === selectedClientId ||
+          (c.document_number && cleanDocument(c.document_number) === clean),
+      )
+
       // Se já estava na carteira, restaura os dados externos pré-existentes se houver
       const existingInList = monitoredList.find((m) => cleanDocument(m.cnpj) === clean)
+      let restoredExternalScore: number | null = null
+      let restoredExternalLabel = ''
+      let restoredAlerts: any = []
+      let restoredCndFed: any = null
+      let restoredCndt: any = null
+
       if (existingInList) {
         if (existingInList.external_score !== undefined || existingInList.external_consulted_at) {
+          restoredExternalScore = existingInList.external_score ?? null
+          restoredExternalLabel = existingInList.external_score_label || 'Consultado anteriormente'
+          restoredAlerts = existingInList.external_alerts || []
+          restoredCndFed = existingInList.external_cnd_federal || { status: 'Não consultada' }
+          restoredCndt = existingInList.external_cndt || { status: 'Não consultada' }
+
           setExternalResult({
             success: true,
             configured: true,
@@ -410,11 +528,11 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
             razaoSocial: existingInList.razao_social,
             nomeFantasia: existingInList.nome_fantasia,
             situacaoCadastral: existingInList.situacao_cadastral || 'ATIVA',
-            score: existingInList.external_score ?? null,
-            scoreLabel: existingInList.external_score_label || 'Consultado anteriormente',
-            alerts: existingInList.external_alerts || [],
-            cndFederal: existingInList.external_cnd_federal || { status: 'Não consultada' },
-            cndt: existingInList.external_cndt || { status: 'Não consultada' },
+            score: restoredExternalScore,
+            scoreLabel: restoredExternalLabel,
+            alerts: restoredAlerts,
+            cndFederal: restoredCndFed,
+            cndt: restoredCndt,
             consultedAt: existingInList.external_consulted_at || existingInList.updated,
           })
         } else {
@@ -439,9 +557,52 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
         setExternalResult(null)
       }
 
+      // Persistir automaticamente a consulta interna no histórico de risk_inquiries
+      // Mapeamento numérico simples do nível de risco para internal_score (0-100)
+      let internalScoreNum: number | null = null
+      if (risk.level === 'Baixo') internalScoreNum = 90
+      else if (risk.level === 'Médio') internalScoreNum = 70
+      else if (risk.level === 'Alto') internalScoreNum = 40
+      else if (risk.level === 'Altíssimo') internalScoreNum = 15
+
+      const savedInquiry = await riskAnalysisService.recordInquiry({
+        client: matchedClient?.id,
+        monitored_client: existingInList?.id,
+        cnpj: clean,
+        razao_social: resultObj.razaoSocial,
+        nome_fantasia: resultObj.nomeFantasia,
+        source: 'internal',
+        internal_score: internalScoreNum,
+        internal_score_label: risk.level,
+        internal_reasons: [risk.reason],
+        external_score: restoredExternalScore,
+        external_score_label: restoredExternalLabel,
+        external_alerts: restoredAlerts,
+        cnd_federal: restoredCndFed,
+        cndt: restoredCndt,
+        situation: {
+          situacao: resultObj.situacaoCadastral,
+          cnae: resultObj.cnae,
+          cnae_descricao: resultObj.cnaeDescricao,
+          natureza_juridica: resultObj.naturezaJuridicaDescricao,
+          natureza_juridica_codigo: resultObj.naturezaJuridicaCodigo,
+          fonte: resultObj.fonte,
+        },
+        raw_summary: JSON.stringify(risk.stats),
+        requested_by: user?.id,
+      })
+
+      if (savedInquiry) {
+        setLastCreatedInquiryId(savedInquiry.id)
+      }
+
+      // Recarrega o histórico geral e a evolução do CNPJ
+      loadInquiries()
+      loadCurrentCnpjHistory(clean)
+
       toast({
         title: 'Consulta realizada com sucesso',
-        description: `Dados de ${resultObj.razaoSocial} carregados.`,
+        description: `Dados de ${resultObj.razaoSocial} carregados e salvos no histórico.`,
       })
     } catch (err: any) {
       console.error('Erro na consulta de CNPJ:', err)
@@ -543,6 +704,54 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
         description: err?.message || 'Falha ao remover cliente da carteira.',
         variant: 'destructive',
       })
+    }
+  }
+
+  // Exclusão de registro de histórico (somente administrador)
+  const handleDeleteInquiry = async (inq: RiskInquiryRecord) => {
+    if (!isAdmin) return
+    const confirmed = window.confirm(
+      `Deseja realmente excluir a consulta de ${inq.razao_social} (${maskCNPJ(inq.cnpj)}) do histórico?`,
+    )
+    if (!confirmed) return
+
+    try {
+      await riskAnalysisService.deleteInquiry(inq.id)
+      toast({
+        title: 'Registro excluído',
+        description: 'A consulta foi removida do histórico com sucesso.',
+      })
+      if (selectedInquiryDetail?.id === inq.id) {
+        setIsDetailModalOpen(false)
+        setSelectedInquiryDetail(null)
+      }
+      loadInquiries()
+      if (consultResult) {
+        loadCurrentCnpjHistory(consultResult.cnpj)
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao excluir',
+        description: err?.message || 'Falha ao remover registro do histórico.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  // Abertura do modal de detalhe
+  const handleOpenInquiryDetail = (inq: RiskInquiryRecord) => {
+    setSelectedInquiryDetail(inq)
+    setIsDetailModalOpen(true)
+  }
+
+  // Scroll suave até a seção de histórico
+  const handleScrollToHistory = (inquiryId?: string) => {
+    const el = document.getElementById('historico-pesquisas-section')
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' })
+      if (inquiryId) {
+        setLastCreatedInquiryId(inquiryId)
+      }
     }
   }
 
@@ -895,6 +1104,90 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
                     </Button>
                   </Link>
                 )}
+              </div>
+            )}
+
+            {/* Atalho na ficha: aviso de consulta gravada no histórico */}
+            <div className="bg-white/10 rounded-2xl px-4 py-2.5 mb-4 flex items-center justify-between text-xs text-white border border-white/15">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                <span>Esta pesquisa foi registrada automaticamente no histórico.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleScrollToHistory(lastCreatedInquiryId || undefined)}
+                className="font-bold underline text-amber-300 hover:text-amber-200 text-xs flex items-center gap-1 cursor-pointer"
+              >
+                <History className="h-3.5 w-3.5" />
+                Ver no histórico de pesquisas
+              </button>
+            </div>
+
+            {/* Evolução de scores prévios deste CNPJ (se já possuir histórico) */}
+            {currentCnpjHistory.length > 1 && (
+              <div className="bg-white/10 rounded-2xl p-4 mb-4 border border-white/15 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                    <History className="h-3.5 w-3.5" />
+                    Evolução Histórica de Consultas ({currentCnpjHistory.length} registros)
+                  </span>
+                  <span className="text-[11px] text-white/70">Mais recentes primeiro</span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {currentCnpjHistory.slice(0, 5).map((h, idx) => {
+                    const isExt = h.source === 'external'
+                    const prevInq = currentCnpjHistory[idx + 1]
+                    let diffScore: number | null = null
+                    if (
+                      isExt &&
+                      h.external_score !== null &&
+                      prevInq?.external_score !== null &&
+                      prevInq?.external_score !== undefined &&
+                      h.external_score !== undefined
+                    ) {
+                      diffScore = h.external_score - prevInq.external_score
+                    }
+
+                    return (
+                      <div
+                        key={h.id}
+                        onClick={() => handleOpenInquiryDetail(h)}
+                        className="bg-white/90 hover:bg-white text-slate-800 text-[11px] rounded-xl px-3 py-1.5 shadow-xs cursor-pointer transition-all flex items-center gap-2 border border-white/40"
+                        title="Clique para ver detalhes desta consulta"
+                      >
+                        <span className="font-semibold text-slate-500">
+                          {formatDateBR(h.created)}
+                        </span>
+                        <span className="text-slate-300">|</span>
+                        <span className="font-bold text-slate-800">
+                          {isExt
+                            ? `Externo: ${h.external_score ?? '—'}/100`
+                            : `Interno: ${h.internal_score_label || 'Avaliado'}`}
+                        </span>
+
+                        {diffScore !== null && diffScore !== 0 && (
+                          <span
+                            className={`flex items-center font-bold text-[10px] ${
+                              diffScore > 0 ? 'text-emerald-600' : 'text-red-600'
+                            }`}
+                          >
+                            {diffScore > 0 ? (
+                              <>
+                                <TrendingUp className="h-3 w-3 mr-0.5" />+{diffScore}
+                              </>
+                            ) : (
+                              <>
+                                <TrendingDown className="h-3 w-3 mr-0.5" />
+                                {diffScore}
+                              </>
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
 
@@ -1518,6 +1811,320 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* =========================================================================
+          NOVA SEÇÃO: HISTÓRICO DE PESQUISAS SALVAS (risk_inquiries)
+          ========================================================================= */}
+      <Card
+        id="historico-pesquisas-section"
+        className="rounded-2xl border-slate-200 shadow-xs overflow-hidden"
+      >
+        <CardHeader className="bg-slate-50/60 pb-4 border-b border-slate-100">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <History className="h-4 w-4 text-[#F08A24]" />
+                Histórico de Pesquisas Salvas
+              </CardTitle>
+              <CardDescription className="text-xs text-slate-500">
+                Registro permanente de todas as consultas internas e externas efetuadas no sistema,
+                com pontuações, certidões e histórico de evolução.
+              </CardDescription>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadInquiries}
+                disabled={isLoadingInquiries}
+                className="h-8 text-xs rounded-xl border-slate-200"
+                title="Recarregar histórico"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 text-slate-500 ${
+                    isLoadingInquiries ? 'animate-spin text-[#F08A24]' : ''
+                  }`}
+                />
+              </Button>
+            </div>
+          </div>
+
+          {/* Barra de Filtros do Histórico */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-3 mt-1 border-t border-slate-200/60">
+            {/* Busca por CNPJ ou Razão Social */}
+            <div className="sm:col-span-5 relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <Input
+                type="text"
+                placeholder="Buscar por CNPJ ou Razão Social..."
+                value={inquirySearch}
+                onChange={(e) => {
+                  setInquirySearch(e.target.value)
+                  setInquiriesPage(1)
+                }}
+                className="h-8 text-xs pl-8 rounded-xl bg-white"
+              />
+            </div>
+
+            {/* Filtro por Origem (Todas / Interna / Externa) */}
+            <div className="sm:col-span-3">
+              <Select
+                value={inquirySourceFilter}
+                onValueChange={(val: any) => {
+                  setInquirySourceFilter(val)
+                  setInquiriesPage(1)
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs rounded-xl bg-white">
+                  <SelectValue placeholder="Origem da pesquisa" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">
+                    Todas as origens
+                  </SelectItem>
+                  <SelectItem value="internal" className="text-xs">
+                    Interna (Fluxo de Caixa)
+                  </SelectItem>
+                  <SelectItem value="external" className="text-xs">
+                    Externa (Confere CNPJ)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Filtro por Cliente Cadastrado */}
+            <div className="sm:col-span-4">
+              <Select
+                value={inquiryClientFilter}
+                onValueChange={(val: any) => {
+                  setInquiryClientFilter(val)
+                  setInquiriesPage(1)
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs rounded-xl bg-white">
+                  <SelectValue placeholder="Filtrar por cliente" />
+                </SelectTrigger>
+                <SelectContent className="max-h-56">
+                  <SelectItem value="all" className="text-xs">
+                    Todos os clientes cadastrados
+                  </SelectItem>
+                  {systemClients.map((c) => (
+                    <SelectItem key={c.id} value={c.id} className="text-xs">
+                      {c.company || c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          {isLoadingInquiries && inquiriesList.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
+              <RefreshCw className="h-6 w-6 animate-spin text-[#F08A24]" />
+              Carregando histórico de pesquisas...
+            </div>
+          ) : inquiriesList.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-xs px-4">
+              Nenhuma pesquisa encontrada no histórico. Realize consultas de risco internas ou
+              pesquisas externas no Confere CNPJ para registrar automaticamente.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead className="bg-slate-50/80 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                  <tr>
+                    <th className="py-3 px-4">Data / Hora</th>
+                    <th className="py-3 px-4">CNPJ &amp; Razão Social</th>
+                    <th className="py-3 px-4">Origem</th>
+                    <th className="py-3 px-4">Score Interno</th>
+                    <th className="py-3 px-4">Score Externo</th>
+                    <th className="py-3 px-4">Situação</th>
+                    <th className="py-3 px-4">Solicitante</th>
+                    <th className="py-3 px-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {inquiriesList.map((inq) => {
+                    const isExt = inq.source === 'external'
+                    const isHighlighted = lastCreatedInquiryId === inq.id
+                    const requestedBy = inq.expand?.requested_by?.name || 'Sistema'
+
+                    // Situação cadastral defensiva
+                    const sitObj =
+                      typeof inq.situation === 'object' && inq.situation !== null
+                        ? (inq.situation as any)
+                        : {}
+                    const situacaoText =
+                      typeof inq.situation === 'string'
+                        ? inq.situation
+                        : extractStatusString(sitObj?.situacao) || 'Ativo'
+
+                    return (
+                      <tr
+                        key={inq.id}
+                        className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${
+                          isHighlighted ? 'bg-amber-50/50 border-l-4 border-l-[#F08A24]' : ''
+                        }`}
+                        onClick={() => handleOpenInquiryDetail(inq)}
+                      >
+                        {/* Data / Hora */}
+                        <td className="py-3 px-4 whitespace-nowrap text-slate-600 font-mono text-[11px]">
+                          {formatDateTimeBR(inq.created)}
+                        </td>
+
+                        {/* CNPJ & Razão Social */}
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-slate-900 leading-snug line-clamp-1 max-w-[240px]">
+                            {inq.razao_social}
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                            {maskCNPJ(inq.cnpj)}
+                          </div>
+                        </td>
+
+                        {/* Origem */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          {isExt ? (
+                            <Badge className="bg-[#F08A24] hover:bg-[#d87616] text-white border-none text-[10px] font-semibold">
+                              Externa — Confere CNPJ
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-[#1E4B8F] hover:bg-[#16386C] text-white border-none text-[10px] font-semibold">
+                              Interna
+                            </Badge>
+                          )}
+                        </td>
+
+                        {/* Score Interno */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          {inq.internal_score_label ? (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] font-semibold border-slate-200 bg-slate-50 text-slate-700"
+                            >
+                              {inq.internal_score_label}
+                            </Badge>
+                          ) : (
+                            <span className="text-slate-400 text-[11px]">—</span>
+                          )}
+                        </td>
+
+                        {/* Score Externo */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          {inq.external_score !== null && inq.external_score !== undefined ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-extrabold font-mono text-slate-800">
+                                {inq.external_score}/100
+                              </span>
+                              {inq.external_score_label && (
+                                <span className="text-[10px] text-slate-500">
+                                  ({inq.external_score_label})
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-[11px]">—</span>
+                          )}
+                        </td>
+
+                        {/* Situação Cadastral */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span className="inline-block text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
+                            {situacaoText}
+                          </span>
+                        </td>
+
+                        {/* Solicitante */}
+                        <td className="py-3 px-4 whitespace-nowrap text-slate-600 text-[11px]">
+                          {requestedBy}
+                        </td>
+
+                        {/* Ações */}
+                        <td
+                          className="py-3 px-4 whitespace-nowrap text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenInquiryDetail(inq)}
+                              className="h-7 w-7 p-0 text-slate-600 hover:text-slate-900 rounded-lg"
+                              title="Ver ficha completa da consulta"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+
+                            {isAdmin && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteInquiry(inq)}
+                                className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                                title="Excluir do histórico"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Paginação do Histórico */}
+          {inquiriesTotalPages > 1 && (
+            <div className="p-3 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+              <span className="text-[11px] text-slate-500">
+                Página <strong>{inquiriesPage}</strong> de <strong>{inquiriesTotalPages}</strong> (
+                {inquiriesTotalItems} registros salvos)
+              </span>
+
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setInquiriesPage((p) => Math.max(1, p - 1))}
+                  disabled={inquiriesPage <= 1 || isLoadingInquiries}
+                  className="h-7 px-2 text-xs rounded-lg"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5 mr-0.5" />
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setInquiriesPage((p) => Math.min(inquiriesTotalPages, p + 1))}
+                  disabled={inquiriesPage >= inquiriesTotalPages || isLoadingInquiries}
+                  className="h-7 px-2 text-xs rounded-lg"
+                >
+                  Próxima
+                  <ChevronRight className="h-3.5 w-3.5 ml-0.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Modal de Detalhe da Consulta do Histórico */}
+      <RiskInquiryDetailModal
+        inquiry={selectedInquiryDetail}
+        isOpen={isDetailModalOpen}
+        onClose={() => {
+          setIsDetailModalOpen(false)
+          setSelectedInquiryDetail(null)
+        }}
+        onDelete={handleDeleteInquiry}
+        isAdmin={isAdmin}
+      />
     </div>
   )
 }

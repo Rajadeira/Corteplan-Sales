@@ -1,7 +1,35 @@
 import pb from '@/lib/pocketbase/client'
-import type { RiskLevel, MonitoredClientRecord } from '@/types'
+import type {
+  RiskLevel,
+  MonitoredClientRecord,
+  RiskInquiryRecord,
+  RiskInquirySource,
+  RiskInquirySituation,
+  ConfereCnpjAlert,
+  ConfereCndInfo,
+} from '@/types'
 import { formatCurrencyBRL } from '@/types'
 import { cleanDocument } from '@/lib/cnpjCpfUtils'
+
+export interface RiskInquiryPayload {
+  client?: string
+  monitored_client?: string
+  cnpj: string
+  razao_social: string
+  nome_fantasia?: string
+  source: RiskInquirySource
+  internal_score?: number | null
+  internal_score_label?: string
+  internal_reasons?: string[] | unknown
+  external_score?: number | null
+  external_score_label?: string
+  external_alerts?: ConfereCnpjAlert[] | unknown
+  cnd_federal?: ConfereCndInfo | unknown
+  cndt?: ConfereCndInfo | unknown
+  situation?: RiskInquirySituation | unknown
+  raw_summary?: string
+  requested_by?: string
+}
 
 export interface ClientFinancialStats {
   totalInstallments: number
@@ -327,5 +355,108 @@ export const riskAnalysisService = {
    */
   async removeMonitored(id: string): Promise<boolean> {
     return pb.collection('monitored_clients').delete(id)
+  },
+
+  /**
+   * Lista o histórico de pesquisas de risco (ordenado das mais recentes para as mais antigas)
+   */
+  async listInquiries(options?: {
+    page?: number
+    perPage?: number
+    filter?: string
+  }): Promise<{ items: RiskInquiryRecord[]; totalItems: number; totalPages: number }> {
+    const page = options?.page || 1
+    const perPage = options?.perPage || 15
+    const filter = options?.filter || ''
+
+    const result = await pb.collection('risk_inquiries').getList<RiskInquiryRecord>(page, perPage, {
+      sort: '-created',
+      filter: filter || undefined,
+      expand: 'requested_by,client,monitored_client',
+    })
+
+    return {
+      items: result.items,
+      totalItems: result.totalItems,
+      totalPages: result.totalPages,
+    }
+  },
+
+  /**
+   * Busca as últimas consultas de um determinado CNPJ para calcular a evolução de risco
+   */
+  async getInquiriesByCnpj(cnpj: string, limit: number = 10): Promise<RiskInquiryRecord[]> {
+    const clean = cleanDocument(cnpj)
+    if (!clean) return []
+    try {
+      return await pb.collection('risk_inquiries').getFullList<RiskInquiryRecord>({
+        filter: `cnpj = "${clean}"`,
+        sort: '-created',
+        limit,
+        expand: 'requested_by',
+      })
+    } catch (_) {
+      return []
+    }
+  },
+
+  /**
+   * Registra uma nova pesquisa no histórico de risk_inquiries.
+   * Evita duplicar consultas idênticas no mesmo minuto para o mesmo CNPJ e mesma fonte.
+   */
+  async recordInquiry(payload: RiskInquiryPayload): Promise<RiskInquiryRecord | null> {
+    const clean = cleanDocument(payload.cnpj)
+    if (!clean) return null
+
+    // Checar duplicatas no mesmo minuto (últimos 60s)
+    const cutoffDate = new Date(Date.now() - 60 * 1000).toISOString().replace('T', ' ')
+    try {
+      const recent = await pb.collection('risk_inquiries').getList<RiskInquiryRecord>(1, 1, {
+        filter: `cnpj = "${clean}" && source = "${payload.source}" && created >= "${cutoffDate}"`,
+        sort: '-created',
+      })
+      if (recent.items.length > 0) {
+        return recent.items[0]
+      }
+    } catch (_) {
+      // Ignora erro e prossegue criando
+    }
+
+    const data: Record<string, unknown> = {
+      cnpj: clean,
+      razao_social: payload.razao_social,
+      nome_fantasia: payload.nome_fantasia || '',
+      source: payload.source,
+      internal_score: payload.internal_score !== undefined ? payload.internal_score : null,
+      internal_score_label: payload.internal_score_label || '',
+      internal_reasons: payload.internal_reasons || [],
+      external_score: payload.external_score !== undefined ? payload.external_score : null,
+      external_score_label: payload.external_score_label || '',
+      external_alerts: payload.external_alerts || [],
+      cnd_federal: payload.cnd_federal || null,
+      cndt: payload.cndt || null,
+      situation: payload.situation || null,
+      raw_summary: payload.raw_summary || '',
+      requested_by: payload.requested_by || pb.authStore.model?.id || null,
+    }
+
+    if (payload.client) data.client = payload.client
+    if (payload.monitored_client) data.monitored_client = payload.monitored_client
+
+    try {
+      return await pb.collection('risk_inquiries').create<RiskInquiryRecord>(data, {
+        expand: 'requested_by,client,monitored_client',
+      })
+    } catch (err) {
+      console.warn('Erro ao registrar histórico de consulta de risco:', err)
+      return null
+    }
+  },
+
+  /**
+   * Exclui um registro do histórico de pesquisas (somente admin)
+   */
+  async deleteInquiry(id: string): Promise<boolean> {
+    return pb.collection('risk_inquiries').delete(id)
   },
 }

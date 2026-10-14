@@ -558,6 +558,46 @@ export interface ConfereCnpjResponse {
     step1Status?: number
     step2Status?: number
   }
+  inquiryId?: string | null
+}
+
+export type RiskInquirySource = 'internal' | 'external'
+
+export interface RiskInquirySituation {
+  situacao?: string
+  cnae?: string
+  cnae_descricao?: string
+  natureza_juridica?: string
+  natureza_juridica_codigo?: string
+  [key: string]: unknown
+}
+
+export interface RiskInquiryRecord extends RecordModel {
+  client?: string
+  monitored_client?: string
+  cnpj: string
+  razao_social: string
+  nome_fantasia?: string
+  source: RiskInquirySource
+  internal_score?: number
+  internal_score_label?: string
+  internal_reasons?: string[] | unknown
+  external_score?: number
+  external_score_label?: string
+  external_alerts?: ConfereCnpjAlert[] | unknown
+  cnd_federal?: ConfereCndInfo | unknown
+  cndt?: ConfereCndInfo | unknown
+  situation?: RiskInquirySituation | unknown
+  raw_summary?: string
+  requested_by?: string
+  created: string
+  updated: string
+  expand?: {
+    client?: ClientRecord
+    monitored_client?: MonitoredClientRecord
+    requested_by?: AppUserRecord
+    [key: string]: unknown
+  }
 }
 
 export interface ConfereCnpjSettings {
