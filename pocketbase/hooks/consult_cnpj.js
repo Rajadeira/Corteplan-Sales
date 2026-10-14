@@ -48,9 +48,28 @@ routerAdd(
             .join(' ')
             .trim()
 
+          const cnaeCode = data.cnae_fiscal ? String(data.cnae_fiscal) : ''
+          const cnaeDesc = data.cnae_fiscal_descricao || ''
+          const natJurCode = data.natureza_juridica
+            ? String(data.natureza_juridica).split('-')[0].trim()
+            : data.codigo_natureza_juridica
+              ? String(data.codigo_natureza_juridica)
+              : ''
+          const natJurDesc = data.natureza_juridica
+            ? String(data.natureza_juridica).includes('-')
+              ? String(data.natureza_juridica).split('-').slice(1).join('-').trim()
+              : String(data.natureza_juridica)
+            : ''
+          const situacao = data.descricao_situacao_cadastral || data.situacao_cadastral || 'ATIVA'
+
           return e.json(200, {
             razaoSocial: data.razao_social || '',
             nomeFantasia: data.nome_fantasia || '',
+            cnae: cnaeCode,
+            cnaeDescricao: cnaeDesc,
+            naturezaJuridicaCodigo: natJurCode,
+            naturezaJuridicaDescricao: natJurDesc,
+            situacaoCadastral: situacao,
             logradouro: logradouroPart,
             numero: data.numero || '',
             complemento: data.complemento || '',
@@ -85,9 +104,35 @@ routerAdd(
       if (res2.statusCode === 200 && res2.json) {
         const data = res2.json
         if (data && data.status !== 'ERROR' && (data.nome || data.fantasia)) {
+          // ReceitaWS traz atividade_principal: [{ code: '56.11-2-01', text: 'Restaurantes...' }]
+          let cnaeCode = ''
+          let cnaeDesc = ''
+          if (Array.isArray(data.atividade_principal) && data.atividade_principal.length > 0) {
+            cnaeCode = data.atividade_principal[0].code || ''
+            cnaeDesc = data.atividade_principal[0].text || ''
+          }
+          let natJurCode = ''
+          let natJurDesc = ''
+          if (data.natureza_juridica) {
+            const rawNat = String(data.natureza_juridica)
+            const parts = rawNat.split('-')
+            if (parts.length > 1) {
+              natJurCode = parts[0].trim()
+              natJurDesc = parts.slice(1).join('-').trim()
+            } else {
+              natJurDesc = rawNat.trim()
+            }
+          }
+          const situacao = data.situacao || 'ATIVA'
+
           return e.json(200, {
             razaoSocial: data.nome || '',
             nomeFantasia: data.fantasia || '',
+            cnae: cnaeCode,
+            cnaeDescricao: cnaeDesc,
+            naturezaJuridicaCodigo: natJurCode,
+            naturezaJuridicaDescricao: natJurDesc,
+            situacaoCadastral: situacao,
             logradouro: data.logradouro || '',
             numero: data.numero || '',
             complemento: data.complemento || '',

@@ -524,3 +524,24 @@ export function maskPhoneBR(value: string): string {
     .replace(/(\d{5})(\d)/, '$1-$2')
     .slice(0, 15)
 }
+
+export type RiskLevel = 'Baixo' | 'Médio' | 'Alto' | 'Altíssimo' | 'Sem histórico'
+
+export interface MonitoredClientRecord extends RecordModel {
+  cnpj: string
+  razao_social: string
+  nome_fantasia?: string
+  risco: RiskLevel
+  risco_motivo?: string
+  situacao_cadastral?: string
+  cnae?: string
+  cnae_descricao?: string
+  natureza_juridica?: string
+  natureza_juridica_codigo?: string
+  ultima_consulta?: string
+  criado_por?: string
+  expand?: {
+    criado_por?: AppUserRecord
+    [key: string]: unknown
+  }
+}

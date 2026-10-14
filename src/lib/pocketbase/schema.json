@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-09T10:02:42.370Z",
+  "generatedAt": "2026-10-14T17:31:27.357Z",
   "collections": [
     {
       "name": "users",
@@ -1089,6 +1089,111 @@
         "CREATE INDEX idx_cashflow_type ON cashflow_entries (type)",
         "CREATE INDEX idx_cashflow_order ON cashflow_entries (order)",
         "CREATE INDEX idx_cashflow_status ON cashflow_entries (status)"
+      ]
+    },
+    {
+      "name": "monitored_clients",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.role = \"Administrador\"",
+        "view": "@request.auth.role = \"Administrador\"",
+        "create": "@request.auth.role = \"Administrador\"",
+        "update": "@request.auth.role = \"Administrador\"",
+        "delete": "@request.auth.role = \"Administrador\""
+      },
+      "fields": [
+        {
+          "name": "cnpj",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "razao_social",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "nome_fantasia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "risco",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Baixo", "Médio", "Alto", "Altíssimo", "Sem histórico"]
+        },
+        {
+          "name": "risco_motivo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "situacao_cadastral",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cnae",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cnae_descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "natureza_juridica",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "natureza_juridica_codigo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultima_consulta",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_monitored_clients_cnpj ON monitored_clients (cnpj)",
+        "CREATE INDEX idx_monitored_clients_risco ON monitored_clients (risco)"
       ]
     }
   ]

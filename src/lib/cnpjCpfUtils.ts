@@ -95,6 +95,11 @@ export function validateCNPJ(cnpj: string): boolean {
 export interface CNPJConsultResult {
   razaoSocial: string
   nomeFantasia?: string
+  cnae?: string
+  cnaeDescricao?: string
+  naturezaJuridicaCodigo?: string
+  naturezaJuridicaDescricao?: string
+  situacaoCadastral?: string
   logradouro?: string
   numero?: string
   complemento?: string
@@ -151,9 +156,35 @@ function consultReceitaWSJsonp(clean: string, timeoutMs = 8000): Promise<CNPJCon
           return reject(new Error('Resposta vazia da ReceitaWS'))
         }
 
+        let cnaeCode = ''
+        let cnaeDesc = ''
+        const ativ = data.atividade_principal as Array<{ code?: string; text?: string }> | undefined
+        if (Array.isArray(ativ) && ativ.length > 0) {
+          cnaeCode = String(ativ[0]?.code || '')
+          cnaeDesc = String(ativ[0]?.text || '')
+        }
+        let natJurCode = ''
+        let natJurDesc = ''
+        if (data.natureza_juridica) {
+          const rawNat = String(data.natureza_juridica)
+          const parts = rawNat.split('-')
+          if (parts.length > 1) {
+            natJurCode = parts[0].trim()
+            natJurDesc = parts.slice(1).join('-').trim()
+          } else {
+            natJurDesc = rawNat.trim()
+          }
+        }
+        const situacao = String(data.situacao || 'ATIVA')
+
         resolve({
           razaoSocial: nome,
           nomeFantasia: fantasia,
+          cnae: cnaeCode,
+          cnaeDescricao: cnaeDesc,
+          naturezaJuridicaCodigo: natJurCode,
+          naturezaJuridicaDescricao: natJurDesc,
+          situacaoCadastral: situacao,
           logradouro: String(data.logradouro || ''),
           numero: String(data.numero || ''),
           complemento: String(data.complemento || ''),
@@ -240,6 +271,11 @@ export async function consultCNPJ(cnpj: string): Promise<CNPJConsultResult> {
           return {
             razaoSocial: data.razaoSocial || '',
             nomeFantasia: data.nomeFantasia || '',
+            cnae: data.cnae || '',
+            cnaeDescricao: data.cnaeDescricao || '',
+            naturezaJuridicaCodigo: data.naturezaJuridicaCodigo || '',
+            naturezaJuridicaDescricao: data.naturezaJuridicaDescricao || '',
+            situacaoCadastral: data.situacaoCadastral || 'ATIVA',
             logradouro: data.logradouro || '',
             numero: data.numero || '',
             complemento: data.complemento || '',
@@ -281,9 +317,26 @@ export async function consultCNPJ(cnpj: string): Promise<CNPJConsultResult> {
           (data.ddd_telefone_2 ? data.ddd_telefone_2 : '') ||
           (data.telefone ? data.telefone : '')
 
+        const cnaeCode = data.cnae_fiscal ? String(data.cnae_fiscal) : ''
+        const cnaeDesc = data.cnae_fiscal_descricao || ''
+        const natJur = String(data.natureza_juridica || '')
+        let natJurCode = data.codigo_natureza_juridica ? String(data.codigo_natureza_juridica) : ''
+        let natJurDesc = natJur
+        if (natJur.includes('-')) {
+          const parts = natJur.split('-')
+          natJurCode = natJurCode || parts[0].trim()
+          natJurDesc = parts.slice(1).join('-').trim()
+        }
+        const situacao = data.descricao_situacao_cadastral || data.situacao_cadastral || 'ATIVA'
+
         return {
           razaoSocial: data.razao_social || '',
           nomeFantasia: data.nome_fantasia || '',
+          cnae: cnaeCode,
+          cnaeDescricao: cnaeDesc,
+          naturezaJuridicaCodigo: natJurCode,
+          naturezaJuridicaDescricao: natJurDesc,
+          situacaoCadastral: situacao,
           logradouro: [data.descricao_tipo_de_logradouro, data.logradouro]
             .filter(Boolean)
             .join(' ')

@@ -40,6 +40,7 @@ import {
   Cell,
   Legend,
 } from 'recharts'
+import { RiskAnalysisTab } from '@/components/RiskAnalysisTab'
 import { useAuth } from '@/contexts/AuthContext'
 import { invoiceService } from '@/services/invoices'
 import { cashflowService } from '@/services/cashflow'
@@ -82,8 +83,13 @@ export default function Financial() {
   const [searchParams, setSearchParams] = useSearchParams()
   const isAdmin = user?.role === 'Administrador'
 
-  // Aba ativa: 'notas' ou 'fluxo'
-  const activeTab = searchParams.get('tab') === 'fluxo' ? 'fluxo' : 'notas'
+  // Aba ativa: 'notas', 'fluxo' ou 'risco'
+  const activeTab =
+    searchParams.get('tab') === 'fluxo'
+      ? 'fluxo'
+      : searchParams.get('tab') === 'risco'
+        ? 'risco'
+        : 'notas'
 
   // Estados de dados
   const [loading, setLoading] = useState(true)
@@ -862,6 +868,10 @@ export default function Financial() {
             <TrendingUp className="h-4 w-4 text-[#F08A24]" />
             Fluxo de Caixa
           </TabsTrigger>
+          <TabsTrigger value="risco" className="flex items-center gap-2 text-xs sm:text-sm">
+            <ShieldAlert className="h-4 w-4 text-[#F08A24]" />
+            Análise de Risco
+          </TabsTrigger>
         </TabsList>
 
         {/* =========================================================================
@@ -1600,6 +1610,13 @@ export default function Financial() {
               </table>
             </div>
           </div>
+        </TabsContent>
+
+        {/* =========================================================================
+            ABA 3: ANÁLISE DE RISCO (SERASA MONITORA) & CARTEIRA DE MONITORAMENTO
+            ========================================================================= */}
+        <TabsContent value="risco" className="space-y-6">
+          <RiskAnalysisTab onGoToOrder={(orderId) => navigate(`/pedidos/${orderId}`)} />
         </TabsContent>
       </Tabs>
 
