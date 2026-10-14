@@ -22,6 +22,7 @@ import { quoteService } from '@/services/quotes'
 import { orderService } from '@/services/orders'
 import { clientService } from '@/services/clients'
 import { itemService } from '@/services/items'
+import { riskAnalysisService } from '@/services/riskAnalysis'
 import type { CompanySettings, TaxSettings, NfeSettings, ConfereCnpjSettings } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -67,6 +68,12 @@ export default function SettingsPage() {
   const [confereConfig, setConfereConfig] = useState<ConfereCnpjSettings>({
     apiKey: '',
   })
+  const [testingConfere, setTestingConfere] = useState(false)
+  const [confereTestFeedback, setConfereTestFeedback] = useState<{
+    type: 'success' | 'error'
+    message: string
+    details?: string
+  } | null>(null)
 
   // Company Form
   const [company, setCompany] = useState<CompanySettings>({
@@ -207,6 +214,7 @@ export default function SettingsPage() {
     if (!isAdmin) return
     try {
       setSavingConfere(true)
+      setConfereTestFeedback(null)
       await settingsService.saveConfereCnpjSettings({
         apiKey: confereConfig.apiKey.trim(),
         updatedAt: new Date().toISOString(),
@@ -226,6 +234,53 @@ export default function SettingsPage() {
       })
     } finally {
       setSavingConfere(false)
+    }
+  }
+
+  const handleTestConfereConnection = async () => {
+    if (!isAdmin) return
+    setTestingConfere(true)
+    setConfereTestFeedback(null)
+    try {
+      const resp = await riskAnalysisService.testConfereConnection(confereConfig.apiKey.trim())
+      if (resp.valid) {
+        const credInfo =
+          resp.creditsRemaining !== null && resp.creditsRemaining !== undefined
+            ? ` (Saldo de créditos restante: ${resp.creditsRemaining})`
+            : ''
+        setConfereTestFeedback({
+          type: 'success',
+          message: resp.message + credInfo,
+        })
+        toast({
+          title: 'Conexão validada!',
+          description: resp.message + credInfo,
+        })
+      } else {
+        setConfereTestFeedback({
+          type: 'error',
+          message: resp.error || 'A API Key não foi aceita pelo Confere CNPJ.',
+        })
+        toast({
+          title: 'Falha no teste de conexão',
+          description: resp.error || 'A API Key não foi aceita.',
+          variant: 'destructive',
+        })
+      }
+    } catch (err: any) {
+      const msg =
+        err?.data?.error || err?.message || 'Falha ao conectar ao servidor do Confere CNPJ.'
+      setConfereTestFeedback({
+        type: 'error',
+        message: msg,
+      })
+      toast({
+        title: 'Erro ao testar API Key',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setTestingConfere(false)
     }
   }
 
@@ -1060,25 +1115,65 @@ export default function SettingsPage() {
                 </p>
               )}
 
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+              {/* Feedback visual do Teste de Conexão */}
+              {confereTestFeedback && (
+                <div
+                  className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 ${
+                    confereTestFeedback.type === 'success'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-red-50 border-red-200 text-red-800'
+                  }`}
+                >
+                  {confereTestFeedback.type === 'success' ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-0.5">
+                    <strong className="block font-semibold">
+                      {confereTestFeedback.type === 'success'
+                        ? 'Conexão Estabelecida'
+                        : 'Falha na Validação'}
+                    </strong>
+                    <p className="leading-relaxed">{confereTestFeedback.message}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <a
                   href="https://conferecnpj.com.br/api-para-desenvolvedores"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-xs text-[#E66812] hover:underline flex items-center gap-1 font-medium"
+                  className="text-xs text-[#E66812] hover:underline flex items-center gap-1 font-medium order-3 sm:order-1"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                   Documentação da API Confere CNPJ
                 </a>
 
-                <Button
-                  type="submit"
-                  disabled={savingConfere}
-                  className="bg-[#3A3A3C] hover:bg-[#2E2E30] text-white gap-2 rounded-xl"
-                >
-                  <Save className="h-4 w-4 text-[#F08A24]" />
-                  {savingConfere ? 'Salvando...' : 'Salvar API Key do Confere CNPJ'}
-                </Button>
+                <div className="flex items-center gap-2.5 order-1 sm:order-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={testingConfere || !confereConfig.apiKey.trim()}
+                    onClick={handleTestConfereConnection}
+                    className="border-slate-300 hover:bg-slate-50 text-slate-700 gap-2 rounded-xl text-xs h-10"
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 text-slate-500 ${testingConfere ? 'animate-spin' : ''}`}
+                    />
+                    {testingConfere ? 'Testando Conexão...' : 'Testar Conexão com a API'}
+                  </Button>
+
+                  <Button
+                    type="submit"
+                    disabled={savingConfere}
+                    className="bg-[#3A3A3C] hover:bg-[#2E2E30] text-white gap-2 rounded-xl text-xs h-10"
+                  >
+                    <Save className="h-4 w-4 text-[#F08A24]" />
+                    {savingConfere ? 'Salvando...' : 'Salvar API Key do Confere CNPJ'}
+                  </Button>
+                </div>
               </div>
             </form>
           </div>

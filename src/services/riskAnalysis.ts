@@ -306,6 +306,23 @@ export const riskAnalysisService = {
   },
 
   /**
+   * Testa a validade da API Key e a conectividade com o Confere CNPJ
+   */
+  async testConfereConnection(apiKey?: string): Promise<{
+    valid: boolean
+    message: string
+    creditsRemaining?: number | null
+    consultationId?: string | null
+    error?: string
+    code?: string
+  }> {
+    return pb.send('/backend/v1/confere-cnpj/test-connection', {
+      method: 'POST',
+      body: { apiKey: apiKey || '' },
+    })
+  },
+
+  /**
    * Remove um cliente da carteira de monitoramento
    */
   async removeMonitored(id: string): Promise<boolean> {

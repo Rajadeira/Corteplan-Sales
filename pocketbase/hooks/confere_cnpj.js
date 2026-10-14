@@ -8,6 +8,124 @@
 // - Não consulta endpoint de protestos (fora do escopo contratado pelo usuario)
 // - Normaliza os dados para consumo limpo pelo frontend e persistência no banco
 
+// Endpoint para testar credenciais do Confere CNPJ e verificar status da API Key
+routerAdd(
+  'POST',
+  '/backend/v1/confere-cnpj/test-connection',
+  (e) => {
+    const auth = e.auth
+    if (!auth || auth.get('role') !== 'Administrador') {
+      throw new ForbiddenError('Apenas administradores podem testar a integração do Confere CNPJ.')
+    }
+
+    const body = e.requestInfo().body || {}
+    let testKey = body.apiKey ? String(body.apiKey).trim() : ''
+
+    if (!testKey) {
+      try {
+        const rec = $app.findFirstRecordByData(
+          'app_settings',
+          'setting_key',
+          'confere_cnpj_settings',
+        )
+        if (rec) {
+          const rawVal = rec.get('value')
+          let confereSettings = null
+          if (typeof rawVal === 'string') {
+            try {
+              confereSettings = JSON.parse(rawVal)
+            } catch (_) {}
+          } else if (rawVal && typeof rawVal === 'object' && !Array.isArray(rawVal)) {
+            confereSettings = rawVal
+          } else {
+            const strVal = rec.getString('value')
+            if (strVal) {
+              try {
+                confereSettings = JSON.parse(strVal)
+              } catch (_) {}
+            }
+          }
+          if (confereSettings && confereSettings.apiKey) {
+            testKey = String(confereSettings.apiKey).trim()
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!testKey) {
+      return e.json(400, {
+        valid: false,
+        code: 'API_KEY_MISSING',
+        error:
+          'Nenhuma API Key informada ou salva para teste. Acesse Configurações > Confere CNPJ e informe sua chave.',
+      })
+    }
+
+    const baseUrl = 'https://conferecnpj.com.br'
+
+    try {
+      const res = $http.send({
+        url: baseUrl + '/api/v1/consulta',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: 'Bearer ' + testKey,
+          'User-Agent': 'Corteplan-ERP/1.0',
+        },
+        body: JSON.stringify({ cnpj: '00394460005887' }),
+        timeout: 15,
+      })
+
+      if (res.statusCode === 401) {
+        return e.json(401, {
+          valid: false,
+          code: 'INVALID_API_KEY',
+          error:
+            'API Key rejeitada pelo Confere CNPJ (401 Não Autorizado). Verifique se copiou a chave completa gerada no painel.',
+        })
+      }
+
+      if (res.statusCode === 402) {
+        return e.json(402, {
+          valid: false,
+          code: 'INSUFFICIENT_CREDITS',
+          error:
+            'A API Key é válida, porém os créditos estão esgotados no Confere CNPJ (402). Compre créditos via PIX em conferecnpj.com.br/perfil.',
+        })
+      }
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        const data = res.json || {}
+        return e.json(200, {
+          valid: true,
+          message: 'Conexão com Confere CNPJ validada com sucesso! API Key ativa e pronta.',
+          creditsRemaining: data.credits_remaining !== undefined ? data.credits_remaining : null,
+          consultationId: data.consultation_id || null,
+        })
+      }
+
+      const rawMsg = (res.json && (res.json.error || res.json.message)) || 'HTTP ' + res.statusCode
+      return e.json(res.statusCode, {
+        valid: false,
+        code: 'API_ERROR',
+        error: 'Retorno da API do Confere CNPJ: ' + rawMsg,
+        statusCode: res.statusCode,
+      })
+    } catch (err) {
+      return e.json(504, {
+        valid: false,
+        code: 'TIMEOUT',
+        error:
+          'Tempo esgotado ao contatar o servidor do Confere CNPJ. Tente novamente em instantes.',
+        details: err.message || String(err),
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// Endpoint de consulta externa completa de risco (Etapa 1 Serpro + Etapa 2 IA)
 routerAdd(
   'GET',
   '/backend/v1/confere-cnpj/{cnpj}',
@@ -29,9 +147,28 @@ routerAdd(
     try {
       const rec = $app.findFirstRecordByData('app_settings', 'setting_key', 'confere_cnpj_settings')
       if (rec) {
-        confereSettings = rec.get('value')
+        const rawVal = rec.get('value')
+        if (typeof rawVal === 'string') {
+          try {
+            confereSettings = JSON.parse(rawVal)
+          } catch (_) {
+            confereSettings = null
+          }
+        } else if (rawVal && typeof rawVal === 'object' && !Array.isArray(rawVal)) {
+          confereSettings = rawVal
+        } else {
+          const strVal = rec.getString('value')
+          if (strVal) {
+            try {
+              confereSettings = JSON.parse(strVal)
+            } catch (_) {
+              confereSettings = null
+            }
+          }
+        }
       }
-    } catch (_) {
+    } catch (errRec) {
+      console.warn('Erro ao carregar confere_cnpj_settings:', errRec)
       confereSettings = null
     }
 
@@ -111,7 +248,7 @@ routerAdd(
       step1Data.id ||
       (step1Data.data && (step1Data.data.consultation_id || step1Data.data.id))
 
-    // 3. Etapa 2: POST /api/v1/consulta/ia (0 créditos — enriquecimento, certidões e análise)
+    // 3. Etapa 2: POST /api/v1/consulta/ia (0 créditos adicionais — CND, CNDT, score de confiança e alertas)
     let step2Data = {}
     if (consultationId) {
       try {
@@ -143,7 +280,6 @@ routerAdd(
     }
 
     // 4. Normalização dos dados combinados
-    // A API pode retornar campos em raiz, dentro de data, cnpj_data, analise, ia, etc.
     const rootData = step1Data.data || {}
     const cnpjData = rootData.cnpj_data || step1Data.cnpj_data || step1Data || {}
     const analysisData =
@@ -177,13 +313,6 @@ routerAdd(
       }
     }
 
-    // Se a API não retornou score explícito mas trouxe indicadores, calcula fallback elegante
-    // Faixas oficiais do Confere CNPJ:
-    // 85-100: Excelente
-    // 70-84: Bom
-    // 50-69: Moderado
-    // 30-49: Baixo
-    // 0-29: Crítico
     let scoreLabel = 'Não avaliado'
     if (score !== null) {
       if (score >= 85) scoreLabel = 'Excelente'

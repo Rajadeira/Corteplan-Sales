@@ -197,15 +197,31 @@ export const RiskAnalysisTab: React.FC<RiskAnalysisTabProps> = () => {
       })
     } catch (err: any) {
       console.error('Erro na pesquisa externa Confere CNPJ:', err)
-      const msg = err?.data?.error || err?.message || 'Falha ao conectar com o Confere CNPJ.'
-      setExternalError(msg)
+      const errData = err?.data || {}
+      let msg = errData.error || err?.message || 'Falha ao conectar com o Confere CNPJ.'
+      const status = err?.status || errData.statusCode
 
-      if (err?.status === 412 || err?.data?.code === 'API_KEY_MISSING') {
+      if (status === 412 || errData.code === 'API_KEY_MISSING') {
         setIsConfereKeyConfigured(false)
+        msg =
+          'Chave da API do Confere CNPJ não configurada. Acesse Configurações > Confere CNPJ e cadastre sua chave.'
+      } else if (status === 401 || errData.code === 'INVALID_API_KEY') {
+        msg =
+          'API Key do Confere CNPJ inválida ou rejeitada (401). Verifique a chave cadastrada em Configurações > Confere CNPJ.'
+      } else if (status === 402 || errData.code === 'INSUFFICIENT_CREDITS') {
+        msg =
+          'Saldo de créditos esgotado no Confere CNPJ (402). É necessário recarregar créditos via PIX em conferecnpj.com.br/perfil.'
+      } else if (status === 404 || errData.code === 'CNPJ_NOT_FOUND') {
+        msg = 'CNPJ não localizado na base oficial do Confere CNPJ.'
+      } else if (status === 504 || errData.code === 'TIMEOUT_STEP1') {
+        msg =
+          'Tempo limite esgotado ao contatar o Confere CNPJ. O serviço externo demorou para responder; tente novamente.'
       }
 
+      setExternalError(msg)
+
       toast({
-        title: 'Pesquisa Externa Indisponível',
+        title: status === 402 ? 'Créditos Esgotados' : 'Pesquisa Externa Indisponível',
         description: msg,
         variant: 'destructive',
       })
