@@ -951,7 +951,7 @@ export default function QuoteDetail() {
                             <th className="py-2 px-2.5 text-right w-24">Unitário</th>
                             <th className="py-2 px-2.5 text-right w-28">Total dos Itens</th>
                             <th className="py-2 px-2.5 text-right w-28 text-slate-950 font-extrabold">
-                              Total com Imposto
+                              Total com Impostos
                             </th>
                           </tr>
                         </thead>
@@ -1004,7 +1004,7 @@ export default function QuoteDetail() {
                                 <td className="py-2.5 px-2.5 text-right whitespace-nowrap font-mono text-slate-800">
                                   {formatCurrencyBRL(item.unit_price)}
                                 </td>
-                                <td className="py-2.5 px-2.5 text-right whitespace-nowrap font-mono font-semibold text-slate-800">
+                                <td className="py-2.5 px-2.5 text-right whitespace-nowrap font-mono text-slate-800">
                                   {formatCurrencyBRL(itemTotal)}
                                 </td>
                                 <td className="py-2.5 px-2.5 text-right whitespace-nowrap font-mono font-bold text-slate-950">
@@ -1012,20 +1012,13 @@ export default function QuoteDetail() {
                                 </td>
                               </tr>
 
-                              {(item.tax || item.technical_description) && (
+                              {item.technical_description && (
                                 <tr className="bg-slate-50/40 print:bg-white print-avoid-break">
                                   <td></td>
                                   <td colSpan={5} className="pb-3 px-3 pt-0">
-                                    {item.tax && item.tax > 0 ? (
-                                      <div className="text-right text-[11px] text-slate-500 font-mono italic mb-1">
-                                        Imp: {formatCurrencyBRL(item.tax)}
-                                      </div>
-                                    ) : null}
-                                    {item.technical_description && (
-                                      <p className="text-[11px] text-slate-600 leading-relaxed whitespace-pre-line text-justify">
-                                        {item.technical_description}
-                                      </p>
-                                    )}
+                                    <p className="text-[11px] text-slate-600 leading-relaxed whitespace-pre-line text-justify">
+                                      {item.technical_description}
+                                    </p>
                                   </td>
                                 </tr>
                               )}
