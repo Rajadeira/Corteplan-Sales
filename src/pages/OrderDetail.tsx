@@ -689,7 +689,7 @@ export default function OrderDetail() {
                                     </div>
                                   )}
                                   <div className="flex-1 min-w-0">
-                                    <div className="font-bold text-slate-900 text-[12.5px]">
+                                    <div className="font-bold text-slate-900 text-xs">
                                       {item.description}
                                     </div>
                                   </div>
