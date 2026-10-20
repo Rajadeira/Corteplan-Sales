@@ -147,10 +147,8 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
   const [pis, setPis] = useState<number>(0)
   const [cofins, setCofins] = useState<number>(0)
   const [taxMode, setTaxMode] = useState<'percent' | 'manual'>('percent')
-  // Rastreia índices de itens em que o usuário editou manualmente o campo de imposto
-  const [manuallyEditedItemTaxIndices, setManuallyEditedItemTaxIndices] = useState<Set<number>>(
-    new Set(),
-  )
+  // Rastreia itens em que o usuário editou manualmente o campo de imposto (por id/índice)
+  const [manuallyEditedItemTaxIds, setManuallyEditedItemTaxIds] = useState<Set<string>>(new Set())
 
   // Parcelas
   const [installments, setInstallments] = useState<QuoteInstallment[]>([
@@ -374,8 +372,43 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
     (Number(pisPercent) || 0) +
     (Number(cofinsPercent) || 0)
 
+  // Auto-cálculo de imposto nos itens:
+  // Se o usuário não tiver fixado manualmente o imposto deste item,
+  // calcula automaticamente: (unit_price * alíquota_total).
+  // Quando o usuário apaga ou altera unit_price, o imposto se ajusta sozinho.
+  useEffect(() => {
+    if (combinedTaxRatePercent <= 0) return
+    setItems((prevItems) => {
+      let changed = false
+      const updated = prevItems.map((item, idx) => {
+        const itemKey = item.id || `item-idx-${idx}`
+        // Se editado manualmente pelo usuário neste formulário, respeita
+        if (manuallyEditedItemTaxIds.has(itemKey)) {
+          return item
+        }
+        const unitPrice = Number(item.unit_price) || 0
+        // Cálculo automático: unit_price * alíquota somada (ex: 377.28 * 18.9% = 71.31)
+        const autoTax =
+          unitPrice > 0 ? Math.round(((unitPrice * combinedTaxRatePercent) / 100) * 100) / 100 : 0
+        if (item.tax !== autoTax) {
+          changed = true
+          return { ...item, tax: autoTax }
+        }
+        return item
+      })
+      return changed ? updated : prevItems
+    })
+  }, [combinedTaxRatePercent, manuallyEditedItemTaxIds])
+
   // Soma total de impostos informados/calculados nos itens
-  const sumItemsTax = items.reduce((acc, it) => acc + (Number(it.tax) || 0), 0)
+  const sumItemsTax = items.reduce((acc, it) => {
+    const qty = Number(it.quantity) || 0
+    const itemTax = Number(it.tax) || 0
+    // O campo 'tax' do item é o imposto por unidade ou total da linha.
+    // Na convenção padrão Corteplan, quando item.tax é fornecido, ele multiplica pela quantidade
+    // ou se já for o total da linha: somamos it.tax * qty para consistência com unit_price * qty
+    return acc + itemTax * qty
+  }, 0)
 
   // Recalcular impostos quando subtotal muda (impostos calculados sobre o subtotal ou sincronizados com itens)
   useEffect(() => {
@@ -615,10 +648,58 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
   const handleItemChange = (index: number, field: keyof QuoteItem, value: string | number) => {
     setItems((prev) => {
       const next = [...prev]
-      next[index] = {
-        ...next[index],
-        [field]: value,
+      const currentItem = next[index]
+      const itemKey = currentItem.id || `item-idx-${index}`
+
+      if (field === 'tax') {
+        const numVal = parseFloat(String(value)) || 0
+        // Se o usuário digitou ou limpou o imposto:
+        if (value === '' || numVal === 0) {
+          // Usuário limpou o imposto: remove da lista manual para reativar auto-cálculo com base no unit_price
+          setManuallyEditedItemTaxIds((s) => {
+            const copy = new Set(s)
+            copy.delete(itemKey)
+            return copy
+          })
+          const unitPrice = Number(currentItem.unit_price) || 0
+          const autoTax =
+            combinedTaxRatePercent > 0 && unitPrice > 0
+              ? Math.round(((unitPrice * combinedTaxRatePercent) / 100) * 100) / 100
+              : 0
+          next[index] = {
+            ...currentItem,
+            tax: autoTax,
+          }
+        } else {
+          // Usuário informou manualmente um valor: marca para não sobrescrever automaticamente
+          setManuallyEditedItemTaxIds((s) => new Set(s).add(itemKey))
+          next[index] = {
+            ...currentItem,
+            tax: numVal,
+          }
+        }
+      } else if (field === 'unit_price') {
+        const newUnitPrice = parseFloat(String(value)) || 0
+        // Se o imposto não foi fixado manualmente pelo usuário, recalcula automaticamente
+        let newTax = currentItem.tax
+        if (!manuallyEditedItemTaxIds.has(itemKey)) {
+          newTax =
+            combinedTaxRatePercent > 0 && newUnitPrice > 0
+              ? Math.round(((newUnitPrice * combinedTaxRatePercent) / 100) * 100) / 100
+              : 0
+        }
+        next[index] = {
+          ...currentItem,
+          unit_price: newUnitPrice,
+          tax: newTax,
+        }
+      } else {
+        next[index] = {
+          ...currentItem,
+          [field]: value,
+        }
       }
+
       return next
     })
   }
@@ -639,16 +720,26 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
     setItems((prev) => {
       const next = [...prev]
       const current = next[index]
+      const newUnitPrice =
+        suggestion.unit_price !== undefined && suggestion.unit_price > 0
+          ? suggestion.unit_price
+          : current.unit_price
+
+      // Se suggestion tiver tax explícito, usa. Caso contrário, calcula com base na alíquota
+      let newTax = current.tax
+      if (suggestion.tax !== undefined && suggestion.tax > 0) {
+        newTax = suggestion.tax
+      } else if (newUnitPrice > 0 && combinedTaxRatePercent > 0) {
+        newTax = Math.round(((newUnitPrice * combinedTaxRatePercent) / 100) * 100) / 100
+      }
+
       next[index] = {
         ...current,
         description: suggestion.description,
         unit: (suggestion.unit as 'un' | 'm²' | 'm' | 'kit' | 'hora') || current.unit || 'un',
-        unit_price:
-          suggestion.unit_price !== undefined && suggestion.unit_price > 0
-            ? suggestion.unit_price
-            : current.unit_price,
+        unit_price: newUnitPrice,
         category: suggestion.category || current.category || 'Mobiliário',
-        tax: suggestion.tax !== undefined ? suggestion.tax : current.tax,
+        tax: newTax,
         technical_description:
           suggestion.technical_description || current.technical_description || '',
         image: suggestion.image || current.image || '',
@@ -1406,7 +1497,7 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                       </div>
                     </div>
 
-                    {/* Quantidade, Unidade, Preço Unitário, Imposto do Item e Subtotal */}
+                    {/* Linha 1 de Valores: Quantidade, Unidade, Unitário, Imp: (R$), Total dos Itens */}
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                       <div className="space-y-1">
                         <Label className="text-[11px] font-semibold text-slate-600">
@@ -1446,9 +1537,11 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-semibold text-slate-600">
-                          Valor Unit. (R$)
-                        </Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-semibold text-slate-600">
+                            Unitário (R$)
+                          </Label>
+                        </div>
                         <Input
                           type="number"
                           min="0"
@@ -1462,17 +1555,37 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-semibold text-slate-600">
-                          Imp: (R$)
-                        </Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-semibold text-slate-600">
+                            Imp: (R$)
+                          </Label>
+                          {manuallyEditedItemTaxIds.has(item.id || `item-idx-${index}`) ? (
+                            <button
+                              type="button"
+                              onClick={() => handleItemChange(index, 'tax', '')}
+                              title="Clique para voltar ao cálculo automático com base na alíquota oficial"
+                              className="text-[10px] text-amber-600 hover:text-amber-800 hover:underline font-medium"
+                            >
+                              Auto
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-emerald-600 font-medium">
+                              Auto ({combinedTaxRatePercent.toFixed(1)}%)
+                            </span>
+                          )}
+                        </div>
                         <Input
                           type="number"
                           min="0"
                           step="0.01"
-                          placeholder="Ex: 1719.90"
-                          value={item.tax || ''}
+                          placeholder="Ex: 71.31"
+                          value={item.tax ?? ''}
                           onChange={(e) =>
-                            handleItemChange(index, 'tax', parseFloat(e.target.value) || 0)
+                            handleItemChange(
+                              index,
+                              'tax',
+                              e.target.value === '' ? '' : parseFloat(e.target.value) || 0,
+                            )
                           }
                           className="bg-white text-xs sm:text-sm h-10 font-mono"
                         />
@@ -1480,13 +1593,51 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
 
                       <div className="space-y-1 col-span-2 sm:col-span-1">
                         <Label className="text-[11px] font-semibold text-slate-600">
-                          Valor Total
+                          Total dos Itens
                         </Label>
                         <div className="h-10 rounded-md bg-slate-100 flex items-center px-3 font-mono text-xs font-bold text-slate-900">
                           {formatCurrencyBRL(itemSubtotal)}
                         </div>
                       </div>
                     </div>
+
+                    {/* Linha 2 de Valores (apenas no formulário): Campos informativos com imposto em tempo real */}
+                    {(() => {
+                      const unitVal = Number(item.unit_price) || 0
+                      const taxVal = Number(item.tax) || 0
+                      const qty = Number(item.quantity) || 0
+                      const unitWithTax = Math.round((unitVal + taxVal) * 100) / 100
+                      // Total com imposto = Total do item + total de impostos do item
+                      const totalWithTax = Math.round((itemSubtotal + taxVal * qty) * 100) / 100
+
+                      return (
+                        <div className="p-2.5 rounded-lg bg-amber-50/40 border border-amber-200/60 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-semibold text-amber-900 flex items-center justify-between">
+                              <span>Valor Unit. c/ Imposto (R$)</span>
+                              <span className="text-[10px] text-amber-700 font-normal">
+                                unitário + imposto
+                              </span>
+                            </Label>
+                            <div className="h-9 rounded-md bg-white/80 border border-amber-200 px-3 flex items-center font-mono text-xs font-bold text-amber-950">
+                              {formatCurrencyBRL(unitWithTax)}
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-semibold text-amber-900 flex items-center justify-between">
+                              <span>Valor Total c/ Imposto (R$)</span>
+                              <span className="text-[10px] text-amber-700 font-normal">
+                                total + impostos da linha
+                              </span>
+                            </Label>
+                            <div className="h-9 rounded-md bg-white/80 border border-amber-200 px-3 flex items-center font-mono text-xs font-black text-amber-950">
+                              {formatCurrencyBRL(totalWithTax)}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
 
                     {/* Descrição técnica longa */}
                     <div className="space-y-1 pt-1">
