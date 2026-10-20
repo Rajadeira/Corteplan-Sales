@@ -2058,6 +2058,32 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                   type="button"
                   variant="secondary"
                   size="sm"
+                  onClick={() => {
+                    const preset = PAYMENT_CONDITION_PRESETS.find((p) => p.id === '28_dias')
+                    if (preset) handleApplyPaymentPreset(preset.id, preset.label, preset.generate)
+                  }}
+                  className="text-xs h-7 rounded-lg font-semibold bg-orange-500/10 text-orange-900 hover:bg-orange-500/20 border border-orange-300"
+                  title="Pagamento em 1 parcela com vencimento em 28 dias"
+                >
+                  28 dias
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    const preset = PAYMENT_CONDITION_PRESETS.find((p) => p.id === '30_dias')
+                    if (preset) handleApplyPaymentPreset(preset.id, preset.label, preset.generate)
+                  }}
+                  className="text-xs h-7 rounded-lg font-semibold bg-orange-500/10 text-orange-900 hover:bg-orange-500/20 border border-orange-300"
+                  title="Pagamento em 1 parcela com vencimento em 30 dias"
+                >
+                  30 dias
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={handleGenerate50Plus2}
                   className="text-xs h-7 rounded-lg font-semibold bg-amber-500/10 text-amber-900 hover:bg-amber-500/20 border border-amber-300"
                   title="Entrada 50% à vista + 2 parcelas (30 e 60 dias)"

@@ -60,6 +60,7 @@ import {
   formatQuoteProposalTitle,
   maskPhoneBR,
   calculateCommission,
+  calculateItemTotalWithTax,
   CORTEPLAN_COMPANY_INFO,
 } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -945,57 +946,73 @@ export default function QuoteDetail() {
                         <thead>
                           <tr className="border-t border-b border-slate-300 bg-slate-50/60 font-bold text-slate-900">
                             <th className="py-2 px-2 w-10 text-center">Item</th>
-                            <th className="py-2 px-3">Descrição</th>
-                            <th className="py-2 px-3 text-center w-20">Quant.</th>
-                            <th className="py-2 px-3 text-right w-28">Valor Unit.</th>
-                            <th className="py-2 px-3 text-right w-28">Valor Total</th>
+                            <th className="py-2 px-2.5">Descrição</th>
+                            <th className="py-2 px-2 text-center w-16">Quant.</th>
+                            <th className="py-2 px-2.5 text-right w-24">Unitário</th>
+                            <th className="py-2 px-2.5 text-right w-28">Total dos Itens</th>
+                            <th className="py-2 px-2.5 text-right w-28 text-slate-950 font-extrabold">
+                              Total com Imposto
+                            </th>
                           </tr>
                         </thead>
                         {quote.items?.map((item, index) => {
                           const itemTotal = (item.quantity || 0) * (item.unit_price || 0)
+                          const quoteTaxesTotal =
+                            (quote.icms || 0) +
+                            (quote.ipi || 0) +
+                            (quote.pis || 0) +
+                            (quote.cofins || 0)
+                          const itemTotalWithTax = calculateItemTotalWithTax(
+                            itemTotal,
+                            produtosTotal,
+                            quoteTaxesTotal,
+                          )
                           return (
                             <tbody
                               key={index}
                               className="divide-y divide-slate-200 border-b border-slate-200 print-avoid-break"
                             >
                               <tr className="align-top print-avoid-break">
-                                <td className="py-3 px-2 text-center font-bold text-slate-800">
+                                <td className="py-2.5 px-2 text-center font-bold text-slate-800">
                                   {index + 1}
                                 </td>
-                                <td className="py-3 px-3">
-                                  <div className="flex items-start gap-3">
+                                <td className="py-2.5 px-2.5">
+                                  <div className="flex items-start gap-2.5">
                                     {item.image && (
                                       <div className="shrink-0 rounded overflow-hidden border border-slate-200 bg-white print:border-slate-300">
                                         <img
                                           src={item.image}
                                           alt={item.description}
-                                          className="h-[76px] w-auto max-w-[110px] object-contain block"
-                                          style={{ height: '76px', maxHeight: '76px' }}
+                                          className="h-[70px] w-auto max-w-[100px] object-contain block"
+                                          style={{ height: '70px', maxHeight: '70px' }}
                                         />
                                       </div>
                                     )}
                                     <div className="flex-1 min-w-0">
-                                      <div className="font-bold text-slate-900 text-[13px]">
+                                      <div className="font-bold text-slate-900 text-[12.5px]">
                                         {item.description}
                                       </div>
                                     </div>
                                   </div>
                                 </td>
-                                <td className="py-3 px-3 text-center whitespace-nowrap text-slate-700">
+                                <td className="py-2.5 px-2 text-center whitespace-nowrap text-slate-700">
                                   {item.quantity} {item.unit || 'un'}
                                 </td>
-                                <td className="py-3 px-3 text-right whitespace-nowrap font-mono text-slate-800">
+                                <td className="py-2.5 px-2.5 text-right whitespace-nowrap font-mono text-slate-800">
                                   {formatCurrencyBRL(item.unit_price)}
                                 </td>
-                                <td className="py-3 px-3 text-right whitespace-nowrap font-mono font-bold text-slate-900">
+                                <td className="py-2.5 px-2.5 text-right whitespace-nowrap font-mono font-semibold text-slate-800">
                                   {formatCurrencyBRL(itemTotal)}
+                                </td>
+                                <td className="py-2.5 px-2.5 text-right whitespace-nowrap font-mono font-bold text-slate-950">
+                                  {formatCurrencyBRL(itemTotalWithTax)}
                                 </td>
                               </tr>
 
                               {(item.tax || item.technical_description) && (
                                 <tr className="bg-slate-50/40 print:bg-white print-avoid-break">
                                   <td></td>
-                                  <td colSpan={4} className="pb-3 px-3 pt-0">
+                                  <td colSpan={5} className="pb-3 px-3 pt-0">
                                     {item.tax && item.tax > 0 ? (
                                       <div className="text-right text-[11px] text-slate-500 font-mono italic mb-1">
                                         Imp: {formatCurrencyBRL(item.tax)}

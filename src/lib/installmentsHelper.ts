@@ -24,6 +24,35 @@ function addMonthsToDate(baseDate: Date, monthsToAdd: number): string {
 }
 
 /**
+ * Cria data no formato YYYY-MM-DD adicionando dias a partir de uma data base
+ */
+export function addDaysToDate(baseDate: Date, daysToAdd: number): string {
+  const d = new Date(baseDate)
+  d.setDate(d.getDate() + daysToAdd)
+  return d.toISOString().split('T')[0]
+}
+
+/**
+ * Gera parcela única com vencimento em N dias após a data base (ex: 28 dias, 30 dias)
+ */
+export function generateSingleInstallmentInDays(
+  days: number,
+  total: number,
+  baseDate: Date = new Date(),
+  method: string = 'Boleto',
+): QuoteInstallment[] {
+  if (total <= 0) return []
+  return [
+    {
+      number: 1,
+      date: addDaysToDate(baseDate, days),
+      method,
+      value: round2(total),
+    },
+  ]
+}
+
+/**
  * Gera parcelas iguais dividindo o total em N vezes
  * A última parcela absorve a diferença de centavos para garantir que a soma feche no total exato.
  */
@@ -117,6 +146,18 @@ export function generateDownPaymentWithInstallments(
  */
 export const PAYMENT_CONDITION_PRESETS: PaymentConditionPreset[] = [
   {
+    id: '28_dias',
+    label: '28 dias',
+    description: 'Pagamento em 1 parcela com vencimento em 28 dias após a emissão',
+    generate: (total, baseDate) => generateSingleInstallmentInDays(28, total, baseDate),
+  },
+  {
+    id: '30_dias',
+    label: '30 dias',
+    description: 'Pagamento em 1 parcela com vencimento em 30 dias após a emissão',
+    generate: (total, baseDate) => generateSingleInstallmentInDays(30, total, baseDate),
+  },
+  {
     id: 'entrada_50_plus_2',
     label: 'Entrada 50% + 2 parcelas',
     description: 'Entrada 50% à vista e saldo em 2 parcelas (30 / 60 dias)',
@@ -194,6 +235,29 @@ export function generateInstallmentsFromTerms(
     const count = parseInt(matchNx[1], 10)
     if (count > 0 && count <= 36) {
       return generateEqualInstallments(count, total, baseDate)
+    }
+  }
+
+  // Match: "28 dias" ou "28d"
+  if (clean === '28 dias' || clean === '28d' || clean.startsWith('28 dias')) {
+    return generateSingleInstallmentInDays(28, total, baseDate)
+  }
+
+  // Match: "30 dias" ou "30d" (sem ser entrada + saldo 30 dias)
+  if (
+    clean === '30 dias' ||
+    clean === '30d' ||
+    (clean.startsWith('30 dias') && !clean.includes('entrada'))
+  ) {
+    return generateSingleInstallmentInDays(30, total, baseDate)
+  }
+
+  // Match genérico: "N dias" (parcela única em N dias)
+  const matchDays = clean.match(/^(\d+)\s*dias?$/i)
+  if (matchDays) {
+    const dCount = parseInt(matchDays[1], 10)
+    if (dCount > 0 && dCount <= 365) {
+      return generateSingleInstallmentInDays(dCount, total, baseDate)
     }
   }
 

@@ -376,6 +376,48 @@ export const DEFAULT_TAX_RATES = {
   cofinsPercent: 3, // 3%
 } as const
 
+/**
+ * Alíquota total padrão somada da Corteplan (12% + 3,25% + 0,65% + 3% = 18,90%)
+ */
+export const DEFAULT_TOTAL_TAX_PERCENT =
+  DEFAULT_TAX_RATES.icmsPercent +
+  DEFAULT_TAX_RATES.ipiPercent +
+  DEFAULT_TAX_RATES.pisPercent +
+  DEFAULT_TAX_RATES.cofinsPercent // 18.9
+
+/**
+ * Calcula o valor de cada item acrescido dos impostos configurados na proposta
+ * (ICMS, IPI, PIS, COFINS aplicados sobre o valor do item).
+ *
+ * Garante que a soma dos itens com imposto feche de forma exata com o total com impostos
+ * já calculado no bloco de totais da proposta, inclusive quando houver desconto comercial
+ * ou alíquotas personalizadas.
+ */
+export function calculateItemTotalWithTax(
+  itemPriceTotal: number,
+  subtotal: number,
+  taxesTotal: number,
+  taxRatesPercent?: number,
+): number {
+  if (itemPriceTotal <= 0) return 0
+
+  // Se tiver taxesTotal e subtotal conhecidos da proposta/pedido
+  if (subtotal > 0 && taxesTotal > 0) {
+    const itemTax = (itemPriceTotal / subtotal) * taxesTotal
+    return Math.round((itemPriceTotal + itemTax) * 100) / 100
+  }
+
+  // Se tiver uma alíquota somada explícita (ex: 18.9%)
+  if (taxRatesPercent !== undefined && taxRatesPercent > 0) {
+    const itemTax = (itemPriceTotal * taxRatesPercent) / 100
+    return Math.round((itemPriceTotal + itemTax) * 100) / 100
+  }
+
+  // Padrão de fallback: alíquota oficial Corteplan 18,90%
+  const defaultTax = (itemPriceTotal * DEFAULT_TOTAL_TAX_PERCENT) / 100
+  return Math.round((itemPriceTotal + defaultTax) * 100) / 100
+}
+
 export function formatCurrencyBRL(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
