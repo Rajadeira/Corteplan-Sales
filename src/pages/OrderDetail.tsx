@@ -663,6 +663,8 @@ export default function OrderDetail() {
                           itemTotal,
                           produtosTotal,
                           orderTaxesTotal,
+                          undefined,
+                          item.tax,
                         )
                         return (
                           <tbody

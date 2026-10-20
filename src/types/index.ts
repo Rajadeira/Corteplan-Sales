@@ -398,8 +398,14 @@ export function calculateItemTotalWithTax(
   subtotal: number,
   taxesTotal: number,
   taxRatesPercent?: number,
+  explicitItemTax?: number,
 ): number {
-  if (itemPriceTotal <= 0) return 0
+  if (itemPriceTotal <= 0 && (!explicitItemTax || explicitItemTax <= 0)) return 0
+
+  // Se o item tiver imposto explícito informado / calculado (ex: item.tax)
+  if (explicitItemTax !== undefined && explicitItemTax > 0) {
+    return Math.round((itemPriceTotal + explicitItemTax) * 100) / 100
+  }
 
   // Se tiver taxesTotal e subtotal conhecidos da proposta/pedido
   if (subtotal > 0 && taxesTotal > 0) {

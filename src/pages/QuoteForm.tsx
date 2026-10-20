@@ -30,6 +30,7 @@ import { quoteService } from '@/services/quotes'
 import { clientService } from '@/services/clients'
 import { userService } from '@/services/users'
 import { itemService } from '@/services/items'
+import { settingsService } from '@/services/settings'
 import {
   PAYMENT_CONDITION_PRESETS,
   generateDownPaymentWithInstallments,
@@ -53,6 +54,7 @@ import {
   DEFAULT_TAX_RATES,
   ITEM_CATEGORIES,
   calculateCommission,
+  calculateItemTotalWithTax,
 } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -145,6 +147,10 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
   const [pis, setPis] = useState<number>(0)
   const [cofins, setCofins] = useState<number>(0)
   const [taxMode, setTaxMode] = useState<'percent' | 'manual'>('percent')
+  // Rastreia índices de itens em que o usuário editou manualmente o campo de imposto
+  const [manuallyEditedItemTaxIndices, setManuallyEditedItemTaxIndices] = useState<Set<number>>(
+    new Set(),
+  )
 
   // Parcelas
   const [installments, setInstallments] = useState<QuoteInstallment[]>([
@@ -174,12 +180,32 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
     const initialize = async () => {
       setLoading(true)
       try {
-        const [clientList, usersData, catalogList, recentQuotesItems] = await Promise.all([
-          clientService.getAll(),
-          userService.getAll().catch(() => []),
-          itemService.getAll().catch(() => []),
-          quoteService.getRecentItemsHistory(40).catch(() => []),
-        ])
+        const [clientList, usersData, catalogList, recentQuotesItems, defaultTaxConfig] =
+          await Promise.all([
+            clientService.getAll(),
+            userService.getAll().catch(() => []),
+            itemService.getAll().catch(() => []),
+            quoteService.getRecentItemsHistory(40).catch(() => []),
+            settingsService.getTaxSettings().catch(() => null),
+          ])
+        if (defaultTaxConfig && !isEditing) {
+          if (defaultTaxConfig.icmsPercent !== undefined)
+            setIcmsPercent(Number(defaultTaxConfig.icmsPercent) || DEFAULT_TAX_RATES.icmsPercent)
+          if (defaultTaxConfig.ipiPercent !== undefined)
+            setIpiPercent(Number(defaultTaxConfig.ipiPercent) || DEFAULT_TAX_RATES.ipiPercent)
+          if (defaultTaxConfig.pisPercent !== undefined)
+            setPisPercent(Number(defaultTaxConfig.pisPercent) || DEFAULT_TAX_RATES.pisPercent)
+          if (defaultTaxConfig.cofinsPercent !== undefined)
+            setCofinsPercent(
+              Number(defaultTaxConfig.cofinsPercent) || DEFAULT_TAX_RATES.cofinsPercent,
+            )
+          if (defaultTaxConfig.defaultValidityDays)
+            setValidityDays(Number(defaultTaxConfig.defaultValidityDays))
+          if (defaultTaxConfig.defaultPaymentTerms)
+            setPaymentTerms(defaultTaxConfig.defaultPaymentTerms)
+          if (defaultTaxConfig.defaultDeliveryTerm)
+            setDeliveryTerm(defaultTaxConfig.defaultDeliveryTerm)
+        }
         setClients(clientList)
         setUsersList(usersData)
         setCatalogItems(catalogList)
@@ -341,20 +367,55 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
         ? Math.round(((Number(discountValue) || 0) / subtotal) * 10000) / 100
         : 0
 
-  // Recalcular impostos quando subtotal muda (impostos calculados sobre o subtotal)
+  // Soma total das alíquotas configuradas (ex: 12% + 3.25% + 0.65% + 3% = 18.90%)
+  const combinedTaxRatePercent =
+    (Number(icmsPercent) || 0) +
+    (Number(ipiPercent) || 0) +
+    (Number(pisPercent) || 0) +
+    (Number(cofinsPercent) || 0)
+
+  // Soma total de impostos informados/calculados nos itens
+  const sumItemsTax = items.reduce((acc, it) => acc + (Number(it.tax) || 0), 0)
+
+  // Recalcular impostos quando subtotal muda (impostos calculados sobre o subtotal ou sincronizados com itens)
   useEffect(() => {
     if (taxMode === 'percent') {
-      const calcIcms = Math.round(((subtotal * (Number(icmsPercent) || 0)) / 100) * 100) / 100
-      const calcIpi = Math.round(((subtotal * (Number(ipiPercent) || 0)) / 100) * 100) / 100
-      const calcPis = Math.round(((subtotal * (Number(pisPercent) || 0)) / 100) * 100) / 100
-      const calcCofins = Math.round(((subtotal * (Number(cofinsPercent) || 0)) / 100) * 100) / 100
+      if (sumItemsTax > 0 && combinedTaxRatePercent > 0) {
+        const calcIcms =
+          Math.round(sumItemsTax * ((Number(icmsPercent) || 0) / combinedTaxRatePercent) * 100) /
+          100
+        const calcIpi =
+          Math.round(sumItemsTax * ((Number(ipiPercent) || 0) / combinedTaxRatePercent) * 100) / 100
+        const calcPis =
+          Math.round(sumItemsTax * ((Number(pisPercent) || 0) / combinedTaxRatePercent) * 100) / 100
+        const calcCofins = Math.round((sumItemsTax - calcIcms - calcIpi - calcPis) * 100) / 100
 
-      setIcms(calcIcms)
-      setIpi(calcIpi)
-      setPis(calcPis)
-      setCofins(calcCofins)
+        setIcms(calcIcms)
+        setIpi(calcIpi)
+        setPis(calcPis)
+        setCofins(calcCofins)
+      } else {
+        const calcIcms = Math.round(((subtotal * (Number(icmsPercent) || 0)) / 100) * 100) / 100
+        const calcIpi = Math.round(((subtotal * (Number(ipiPercent) || 0)) / 100) * 100) / 100
+        const calcPis = Math.round(((subtotal * (Number(pisPercent) || 0)) / 100) * 100) / 100
+        const calcCofins = Math.round(((subtotal * (Number(cofinsPercent) || 0)) / 100) * 100) / 100
+
+        setIcms(calcIcms)
+        setIpi(calcIpi)
+        setPis(calcPis)
+        setCofins(calcCofins)
+      }
     }
-  }, [subtotal, icmsPercent, ipiPercent, pisPercent, cofinsPercent, taxMode])
+  }, [
+    subtotal,
+    sumItemsTax,
+    combinedTaxRatePercent,
+    icmsPercent,
+    ipiPercent,
+    pisPercent,
+    cofinsPercent,
+    taxMode,
+  ])
 
   const taxesTotal =
     (Number(icms) || 0) + (Number(ipi) || 0) + (Number(pis) || 0) + (Number(cofins) || 0)

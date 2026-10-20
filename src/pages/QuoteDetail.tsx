@@ -966,6 +966,8 @@ export default function QuoteDetail() {
                             itemTotal,
                             produtosTotal,
                             quoteTaxesTotal,
+                            undefined,
+                            item.tax,
                           )
                           return (
                             <tbody
