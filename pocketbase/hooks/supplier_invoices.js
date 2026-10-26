@@ -398,17 +398,17 @@ routerAdd(
         // 10. Salvar na collection supplier_invoices (com limitação defensiva de tamanhos)
         const invoiceRec = new Record(supplierInvoicesCol)
         invoiceRec.set('access_key', accessKey.trim())
-        invoiceRec.set('number', truncateStr(number, 30))
-        invoiceRec.set('series', truncateStr(series, 10))
-        invoiceRec.set('model', truncateStr(model, 10))
+        invoiceRec.set('number', truncateStr(number, 50))
+        invoiceRec.set('series', truncateStr(series, 20))
+        invoiceRec.set('model', truncateStr(model, 20))
         invoiceRec.set('issue_date', issueDate)
-        invoiceRec.set('operation_nature', truncateStr(operationNature, 200))
-        invoiceRec.set('supplier_cnpj', truncateStr(formatCNPJ(supplierCnpj) || supplierCnpj, 30))
-        invoiceRec.set('supplier_name', truncateStr(supplierName, 255))
-        invoiceRec.set('supplier_trade_name', truncateStr(supplierTradeName, 255))
-        invoiceRec.set('supplier_state', truncateStr(supplierState, 10))
-        invoiceRec.set('supplier_city', truncateStr(supplierCity, 100))
-        invoiceRec.set('supplier_address', truncateStr(supplierAddress, 300))
+        invoiceRec.set('operation_nature', truncateStr(operationNature, 1000))
+        invoiceRec.set('supplier_cnpj', truncateStr(formatCNPJ(supplierCnpj) || supplierCnpj, 50))
+        invoiceRec.set('supplier_name', truncateStr(supplierName, 500))
+        invoiceRec.set('supplier_trade_name', truncateStr(supplierTradeName, 500))
+        invoiceRec.set('supplier_state', truncateStr(supplierState, 50))
+        invoiceRec.set('supplier_city', truncateStr(supplierCity, 200))
+        invoiceRec.set('supplier_address', truncateStr(supplierAddress, 1000))
         invoiceRec.set('total_amount', totalAmount)
         invoiceRec.set('products_amount', productsAmount)
         invoiceRec.set('icms_amount', icmsAmount)
@@ -416,16 +416,34 @@ routerAdd(
         invoiceRec.set('pis_amount', pisAmount)
         invoiceRec.set('cofins_amount', cofinsAmount)
         invoiceRec.set('items_summary', itemsSummary)
-        invoiceRec.set('xml_filename', truncateStr(filename, 255))
+        invoiceRec.set('xml_filename', truncateStr(filename, 500))
         invoiceRec.set('import_source', 'xml_manual')
-        // Armazena XML completo ou truncado defensivamente (campo text do SQLite suporta MBs, mas limitamos a 500k)
-        if (xmlContent.length <= 500000) {
+        // Armazena XML completo (campo raw_xml expandido para até 1.000.000 caracteres)
+        if (xmlContent.length <= 950000) {
           invoiceRec.set('raw_xml', xmlContent)
         } else {
-          invoiceRec.set('raw_xml', xmlContent.substring(0, 500000) + '<!-- truncated -->')
+          invoiceRec.set('raw_xml', xmlContent.substring(0, 950000) + '<!-- truncated -->')
         }
 
-        $app.save(invoiceRec)
+        try {
+          $app.save(invoiceRec)
+        } catch (saveErr) {
+          // Tratamento gracioso de validação do PocketBase se houver estouro ou falha em algum campo específico
+          let errorMsg = saveErr.message || String(saveErr)
+          // Se tiver detalhes de validação (ex: saveErr.data ou propriedades do goja)
+          if (saveErr.data && typeof saveErr.data === 'object') {
+            const fieldErrors = []
+            for (const key in saveErr.data) {
+              const item = saveErr.data[key]
+              const msg = item && item.message ? item.message : JSON.stringify(item)
+              fieldErrors.push(key + ': ' + msg)
+            }
+            if (fieldErrors.length > 0) {
+              errorMsg = fieldErrors.join('; ')
+            }
+          }
+          throw new Error('Falha ao salvar nota fiscal (' + errorMsg + ')')
+        }
 
         // 11. Criar automaticamente o lançamento de Saída no Fluxo de Caixa (cashflow_entries)
         let cashflowId = ''
@@ -484,11 +502,23 @@ routerAdd(
             ' importada e lançada no Caixa com sucesso!',
         })
       } catch (err) {
+        let msg = err.message || String(err)
+        // Se o erro do PocketBase contiver objeto aninhado de validação
+        if (err.data && typeof err.data === 'object') {
+          const fieldMsgs = []
+          for (const f in err.data) {
+            const d = err.data[f]
+            fieldMsgs.push(f + ': ' + (d?.message || JSON.stringify(d)))
+          }
+          if (fieldMsgs.length > 0) {
+            msg = fieldMsgs.join('; ')
+          }
+        }
         results.push({
           filename: filename,
           success: false,
           status: 'error',
-          message: 'Erro ao processar XML: ' + (err.message || String(err)),
+          message: 'Erro ao processar XML: ' + msg,
         })
       }
     }
