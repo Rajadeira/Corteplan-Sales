@@ -16,6 +16,7 @@ export interface CreateCashflowEntryData {
   origin: CashflowOrigin
   status: CashflowStatus
   order?: string
+  supplier_invoice?: string
   installment_number?: number
   payment_method?: string
   received_at?: string
@@ -36,7 +37,7 @@ export const cashflowService = {
   async getAll(): Promise<CashflowEntryRecord[]> {
     return pb.collection('cashflow_entries').getFullList<CashflowEntryRecord>({
       sort: '-date,-created',
-      expand: 'order',
+      expand: 'order,supplier_invoice',
     })
   },
 
@@ -44,13 +45,13 @@ export const cashflowService = {
     return pb.collection('cashflow_entries').getFullList<CashflowEntryRecord>({
       filter: `date >= "${startDate}" && date <= "${endDate}"`,
       sort: 'date',
-      expand: 'order',
+      expand: 'order,supplier_invoice',
     })
   },
 
   async getById(id: string): Promise<CashflowEntryRecord> {
     return pb.collection('cashflow_entries').getOne<CashflowEntryRecord>(id, {
-      expand: 'order',
+      expand: 'order,supplier_invoice',
     })
   },
 

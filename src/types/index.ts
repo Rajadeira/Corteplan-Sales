@@ -149,7 +149,7 @@ export interface InvoiceRecord extends RecordModel {
 }
 
 export type CashflowType = 'Entrada' | 'Saída'
-export type CashflowOrigin = 'manual' | 'parcela'
+export type CashflowOrigin = 'manual' | 'parcela' | 'nfe_fornecedor'
 export type CashflowStatus = 'Pendente' | 'Realizado'
 
 export interface CashflowEntryRecord extends RecordModel {
@@ -161,14 +161,106 @@ export interface CashflowEntryRecord extends RecordModel {
   origin: CashflowOrigin
   status: CashflowStatus
   order?: string
+  supplier_invoice?: string
   installment_number?: number
   payment_method?: string
   received_at?: string
   notes?: string
   expand?: {
     order?: OrderRecord
+    supplier_invoice?: SupplierInvoiceRecord
     [key: string]: unknown
   }
+}
+
+export interface SupplierInvoiceItem {
+  nItem?: number
+  code?: string
+  description: string
+  quantity: number
+  unit?: string
+  unit_price: number
+  total_price: number
+}
+
+export interface SupplierInvoiceRecord extends RecordModel {
+  access_key: string
+  number: string
+  series?: string
+  model?: string
+  issue_date: string
+  operation_nature?: string
+  supplier_cnpj: string
+  supplier_name: string
+  supplier_trade_name?: string
+  supplier_state?: string
+  supplier_city?: string
+  supplier_address?: string
+  total_amount: number
+  products_amount?: number
+  icms_amount?: number
+  ipi_amount?: number
+  pis_amount?: number
+  cofins_amount?: number
+  cashflow_entry?: string
+  items_summary?: SupplierInvoiceItem[]
+  xml_filename?: string
+  raw_xml?: string
+  import_source?: 'xml_manual' | 'provedor_auto'
+  created: string
+  updated: string
+  expand?: {
+    cashflow_entry?: CashflowEntryRecord
+    [key: string]: unknown
+  }
+}
+
+export interface SupplierCertificateInfo {
+  id?: string
+  filename: string
+  uploaded_at?: string
+  valid_until?: string
+  subject_name?: string
+  cnpj?: string
+  has_password?: boolean
+  active?: boolean
+}
+
+export interface ParseXmlFilePayload {
+  filename: string
+  content: string // texto XML completo
+}
+
+export interface ParseXmlImportResultItem {
+  filename: string
+  success: boolean
+  status: 'imported' | 'duplicated' | 'invalid_xml' | 'error'
+  invoice_id?: string
+  cashflow_id?: string
+  access_key?: string
+  number?: string
+  series?: string
+  supplier_name?: string
+  supplier_cnpj?: string
+  supplier_city?: string
+  supplier_state?: string
+  supplier_address?: string
+  issue_date?: string
+  total_amount?: number
+  existing_supplier?: {
+    id: string
+    name: string
+    company?: string
+  } | null
+  message: string
+}
+
+export interface ParseXmlImportResponse {
+  success: boolean
+  importedCount: number
+  duplicatedCount: number
+  errorCount: number
+  results: ParseXmlImportResultItem[]
 }
 
 export interface NfeSettings {

@@ -28,6 +28,7 @@ import {
   KeyRound,
   FileCheck,
   Percent,
+  Upload,
 } from 'lucide-react'
 import {
   BarChart,
@@ -41,6 +42,7 @@ import {
   Legend,
 } from 'recharts'
 import { RiskAnalysisTab } from '@/components/RiskAnalysisTab'
+import { SupplierInvoicesTab } from '@/components/SupplierInvoicesTab'
 import { useAuth } from '@/contexts/AuthContext'
 import { invoiceService } from '@/services/invoices'
 import { cashflowService } from '@/services/cashflow'
@@ -83,13 +85,15 @@ export default function Financial() {
   const [searchParams, setSearchParams] = useSearchParams()
   const isAdmin = user?.role === 'Administrador'
 
-  // Aba ativa: 'notas', 'fluxo' ou 'risco'
+  // Aba ativa: 'notas', 'fornecedores', 'fluxo' ou 'risco'
   const activeTab =
     searchParams.get('tab') === 'fluxo'
       ? 'fluxo'
-      : searchParams.get('tab') === 'risco'
-        ? 'risco'
-        : 'notas'
+      : searchParams.get('tab') === 'fornecedores'
+        ? 'fornecedores'
+        : searchParams.get('tab') === 'risco'
+          ? 'risco'
+          : 'notas'
 
   // Estados de dados
   const [loading, setLoading] = useState(true)
@@ -864,6 +868,10 @@ export default function Financial() {
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="fornecedores" className="flex items-center gap-2 text-xs sm:text-sm">
+            <Upload className="h-4 w-4 text-[#F08A24]" />
+            Notas de Fornecedores
+          </TabsTrigger>
           <TabsTrigger value="fluxo" className="flex items-center gap-2 text-xs sm:text-sm">
             <TrendingUp className="h-4 w-4 text-[#F08A24]" />
             Fluxo de Caixa
@@ -873,6 +881,18 @@ export default function Financial() {
             Análise de Risco
           </TabsTrigger>
         </TabsList>
+
+        {/* =========================================================================
+            ABA FORNECEDORES: NOTAS FISCAIS DE ENTRADA, IMPORTAÇÃO DE XML E CERTIFICADO A1
+            ========================================================================= */}
+        <TabsContent value="fornecedores" className="space-y-6">
+          <SupplierInvoicesTab
+            onGoToCashflow={(search) => {
+              setSearchParams({ tab: 'fluxo', q: search || '' })
+            }}
+            onRefreshFinancialData={loadAllFinancialData}
+          />
+        </TabsContent>
 
         {/* =========================================================================
             ABA 1: NOTAS FISCAIS — FILA DE ESPERA E EMISSÃO AUTOMÁTICA VIA INTEGRAÇÃO
@@ -1559,13 +1579,31 @@ export default function Financial() {
                                 Ver pedido vinculado &rarr;
                               </button>
                             )}
+                            {entry.supplier_invoice && (
+                              <button
+                                type="button"
+                                onClick={() => setSearchParams({ tab: 'fornecedores' })}
+                                className="text-[11px] text-orange-600 hover:underline font-mono block mt-0.5"
+                              >
+                                Ver NF-e de entrada vinculada &rarr;
+                              </button>
+                            )}
                           </td>
 
                           <td className="py-3 px-4 whitespace-nowrap">
                             <div className="text-slate-700">{entry.category || 'Geral'}</div>
-                            <span className="text-[10px] text-slate-400 capitalize">
-                              Origem: {entry.origin}
-                            </span>
+                            {entry.origin === 'nfe_fornecedor' ? (
+                              <Badge
+                                variant="outline"
+                                className="bg-orange-50 text-[#E66812] border-orange-200 text-[10px] mt-0.5"
+                              >
+                                NF-e entrada
+                              </Badge>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 capitalize">
+                                Origem: {entry.origin}
+                              </span>
+                            )}
                           </td>
 
                           <td className="py-3 px-4 text-center whitespace-nowrap">

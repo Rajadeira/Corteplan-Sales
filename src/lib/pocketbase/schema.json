@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-20T22:06:18.661Z",
+  "generatedAt": "2026-10-26T05:16:20.744Z",
   "collections": [
     {
       "name": "users",
@@ -1029,7 +1029,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["manual", "parcela"]
+          "selectValues": ["manual", "parcela", "nfe_fornecedor"]
         },
         {
           "name": "status",
@@ -1082,6 +1082,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "supplier_invoice",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "supplier_invoices"
         }
       ],
       "indexes": [
@@ -1373,6 +1380,254 @@
       "indexes": [
         "CREATE INDEX idx_risk_inquiries_created ON risk_inquiries (created DESC)",
         "CREATE INDEX idx_risk_inquiries_cnpj ON risk_inquiries (cnpj)"
+      ]
+    },
+    {
+      "name": "supplier_certificates",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.role = \"Administrador\"",
+        "view": "@request.auth.role = \"Administrador\"",
+        "create": "@request.auth.role = \"Administrador\"",
+        "update": "@request.auth.role = \"Administrador\"",
+        "delete": "@request.auth.role = \"Administrador\""
+      },
+      "fields": [
+        {
+          "name": "filename",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "certificate_file",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "has_password",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uploaded_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valid_until",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "subject_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cnpj",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_supplier_cert_active ON supplier_certificates (active)"]
+    },
+    {
+      "name": "supplier_invoices",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.role = \"Administrador\"",
+        "view": "@request.auth.role = \"Administrador\"",
+        "create": "@request.auth.role = \"Administrador\"",
+        "update": "@request.auth.role = \"Administrador\"",
+        "delete": "@request.auth.role = \"Administrador\""
+      },
+      "fields": [
+        {
+          "name": "access_key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "number",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "series",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "issue_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "operation_nature",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "supplier_cnpj",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "supplier_name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "supplier_trade_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "supplier_state",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "supplier_city",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "supplier_address",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "products_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "icms_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ipi_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pis_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cofins_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cashflow_entry",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "cashflow_entries"
+        },
+        {
+          "name": "items_summary",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "xml_filename",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "raw_xml",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "import_source",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["xml_manual", "provedor_auto"]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_supplier_invoices_key ON supplier_invoices (access_key)",
+        "CREATE INDEX idx_supplier_invoices_date ON supplier_invoices (issue_date DESC)",
+        "CREATE INDEX idx_supplier_invoices_cnpj ON supplier_invoices (supplier_cnpj)"
       ]
     }
   ]

@@ -286,3 +286,52 @@ onRecordDeleteRequest((e) => {
   }
   e.next()
 }, 'cashflow_entries')
+
+// 6. Regras estritas para Notas de Fornecedores e Certificados A1
+onRecordCreateRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'supplier_invoices')
+
+onRecordUpdateRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'supplier_invoices')
+
+onRecordDeleteRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'supplier_invoices')
+
+onRecordCreateRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'supplier_certificates')
+
+onRecordUpdateRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'supplier_certificates')
+
+onRecordDeleteRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'Administrador') {
+    throw new ForbiddenError('Acesso restrito ao perfil Administrador.')
+  }
+  e.next()
+}, 'supplier_certificates')
