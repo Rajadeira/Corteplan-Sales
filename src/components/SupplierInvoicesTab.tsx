@@ -169,7 +169,9 @@ export function SupplierInvoicesTab({
         )
       }
       if (res.errorCount > 0) {
-        toast.error(`${res.errorCount} arquivo(s) não puderam ser lidos como NF-e válida.`)
+        const firstError = res.results.find((r) => !r.success && r.status !== 'duplicated')
+        const detailMsg = firstError ? `: ${firstError.message}` : '.'
+        toast.error(`${res.errorCount} arquivo(s) com erro na importação${detailMsg}`)
       }
 
       await loadData()
@@ -178,7 +180,12 @@ export function SupplierInvoicesTab({
       }
     } catch (err: any) {
       console.error('Erro ao importar XMLs:', err)
-      toast.error(err.message || 'Erro ao processar importação dos arquivos XML.')
+      const specificMsg =
+        err?.data?.message ||
+        err?.response?.message ||
+        err?.message ||
+        'Erro ao processar importação dos arquivos XML.'
+      toast.error(`Falha na importação: ${specificMsg}`)
     } finally {
       setIsImportingXml(false)
       if (xmlFileInputRef.current) {

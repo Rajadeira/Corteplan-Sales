@@ -16,7 +16,7 @@
 routerAdd(
   'POST',
   '/backend/v1/supplier-invoices/parse-and-import',
-  (e) => {
+  function (e) {
     const auth = e.auth
     if (!auth || auth.get('role') !== 'Administrador') {
       throw new ForbiddenError(
@@ -25,18 +25,50 @@ routerAdd(
     }
 
     // Funções utilitárias no escopo interno do handler
+    function cleanXmlContent(raw) {
+      if (!raw) return ''
+      let s = String(raw).trim()
+      // Remove byte order mark (BOM) UTF-8 / UTF-16
+      if (s.charCodeAt(0) === 0xfeff || s.charCodeAt(0) === 0xfffe) {
+        s = s.substring(1).trim()
+      }
+      // Se vier com declaração XML prolog estranha ou lixo antes de '<'
+      const firstLt = s.indexOf('<')
+      if (firstLt > 0) {
+        s = s.substring(firstLt)
+      }
+      return s
+    }
+
     function extractXmlTag(xml, tagName) {
+      if (!xml) return ''
       const regex = new RegExp(
-        '<(?:[\\w]+:)?' + tagName + '(?:\\s+[^>]*)?>([\\s\\S]*?)<\\/(?:[\\w]+:)?' + tagName + '>',
+        '<(?:[\\w.-]+:)?' +
+          tagName +
+          '(?:\\s+[^>]*)?>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?' +
+          tagName +
+          '>',
         'i',
       )
       const match = xml.match(regex)
-      return match ? match[1].trim() : ''
+      if (!match) return ''
+      let val = match[1].trim()
+      // Remove encapsulamento CDATA se houver: <![CDATA[ ... ]]>
+      const cdataMatch = val.match(/^<!\[CDATA\[([\s\S]*?)\]\]>$/i)
+      if (cdataMatch) {
+        val = cdataMatch[1].trim()
+      }
+      return val
     }
 
     function extractXmlBlocks(xml, tagName) {
+      if (!xml) return []
       const regex = new RegExp(
-        '<(?:[\\w]+:)?' + tagName + '(?:\\s+[^>]*)?>([\\s\\S]*?)<\\/(?:[\\w]+:)?' + tagName + '>',
+        '<(?:[\\w.-]+:)?' +
+          tagName +
+          '(?:\\s+[^>]*)?>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?' +
+          tagName +
+          '>',
         'gi',
       )
       const matches = []
@@ -54,8 +86,32 @@ routerAdd(
 
     function formatCNPJ(cnpj) {
       const c = cleanDigits(cnpj)
-      if (c.length !== 14) return cnpj || ''
-      return c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+      if (c.length === 14) {
+        return c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+      }
+      if (c.length === 11) {
+        return c.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
+      }
+      return cnpj || ''
+    }
+
+    function parseNumericField(str, defaultVal) {
+      if (!str) return defaultVal || 0
+      // Aceita formato padrão ponto (ex: 1234.56) ou vírgula se vier formatado (ex: 1.234,56 ou 1234,56)
+      let cleaned = String(str).trim()
+      if (cleaned.includes(',') && !cleaned.includes('.')) {
+        cleaned = cleaned.replace(',', '.')
+      } else if (cleaned.includes('.') && cleaned.includes(',')) {
+        cleaned = cleaned.replace(/\./g, '').replace(',', '.')
+      }
+      const parsed = parseFloat(cleaned)
+      return isNaN(parsed) ? defaultVal || 0 : parsed
+    }
+
+    function truncateStr(str, maxLen) {
+      if (!str) return ''
+      const s = String(str).trim()
+      return s.length > maxLen ? s.substring(0, maxLen) : s
     }
 
     const body = e.requestInfo().body || {}
@@ -72,29 +128,67 @@ routerAdd(
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
       const filename = file.filename || 'nfe.xml'
-      const xmlContent = file.content || ''
+      const rawContent = file.content || ''
+      const xmlContent = cleanXmlContent(rawContent)
 
-      if (!xmlContent || xmlContent.trim().length === 0) {
+      if (!xmlContent || xmlContent.length === 0) {
         results.push({
-          filename,
+          filename: filename,
           success: false,
-          status: 'error',
+          status: 'empty_file',
           message: 'Arquivo XML vazio ou corrompido.',
         })
         continue
       }
 
+      // Validação preliminar: deve ser um XML com estrutura de NF-e / NFC-e
+      const hasNfeRoot =
+        /nfeProc|NFe|infNFe|procEventoNFe|cteProc/i.test(xmlContent) ||
+        /<(?:\w+:)?[a-zA-Z0-9]+[^>]*>/.test(xmlContent)
+      if (!hasNfeRoot) {
+        results.push({
+          filename: filename,
+          success: false,
+          status: 'invalid_format',
+          message:
+            'O arquivo selecionado não aparenta ser um documento XML válido de NF-e (tags NFe/nfeProc ausentes).',
+        })
+        continue
+      }
+
       try {
-        // 1. Extração da Chave de Acesso (44 dígitos)
-        let accessKey = extractXmlTag(xmlContent, 'chNFe')
+        // 1. Extração do bloco principal da NF-e (infNFe) se existir
+        const infNfeBlock = extractXmlTag(xmlContent, 'infNFe') || xmlContent
+
+        // 2. Extração da Chave de Acesso (44 dígitos numéricos)
+        let accessKey = ''
+
+        // Tentativa A: Atributo Id da tag <infNFe Id="NFe..."> ou <infNFe Id="...">
+        const infNfeIdMatch = xmlContent.match(
+          /<(?:[\w.-]+:)?infNFe\s+[^>]*Id=["'](?:NFe)?(\d{44})["']/i,
+        )
+        if (infNfeIdMatch) {
+          accessKey = infNfeIdMatch[1]
+        }
+
+        // Tentativa B: Tag <chNFe> ou <chNFeProt> (em <protNFe> ou <retConsSitNFe>)
         if (!accessKey) {
-          const infNfeIdMatch = xmlContent.match(
-            /<(?:\w+:)?infNFe\s+[^>]*Id=["'](?:NFe)?(\d{44})["']/i,
-          )
-          if (infNfeIdMatch) {
-            accessKey = infNfeIdMatch[1]
+          const chTag = extractXmlTag(xmlContent, 'chNFe') || extractXmlTag(xmlContent, 'chNFeProt')
+          const digits = cleanDigits(chTag)
+          if (digits.length === 44) {
+            accessKey = digits
           }
         }
+
+        // Tentativa C: Atributo Id com prefixo sem case estrito
+        if (!accessKey) {
+          const genericIdMatch = xmlContent.match(/\bId=["'](?:[a-zA-Z]+)?(\d{44})["']/i)
+          if (genericIdMatch) {
+            accessKey = genericIdMatch[1]
+          }
+        }
+
+        // Tentativa D: Busca geral por 44 dígitos no XML (apenas se parecer chave válida)
         if (!accessKey) {
           const genericKeyMatch = xmlContent.match(/\b\d{44}\b/)
           if (genericKeyMatch) {
@@ -104,15 +198,16 @@ routerAdd(
 
         if (!accessKey || accessKey.length !== 44) {
           results.push({
-            filename,
+            filename: filename,
             success: false,
-            status: 'invalid_xml',
-            message: 'Não foi possível localizar a chave de acesso (44 dígitos) no XML da NF-e.',
+            status: 'key_not_found',
+            message:
+              'Não foi possível localizar a chave de acesso (44 dígitos) no XML. Verifique se o arquivo é uma NF-e (modelo 55) ou NFC-e (modelo 65) autorizada.',
           })
           continue
         }
 
-        // 2. Verificar duplicidade no banco
+        // 3. Verificar duplicidade no banco (por chave de acesso única)
         let existing = null
         try {
           existing = $app.findFirstRecordByData('supplier_invoices', 'access_key', accessKey)
@@ -122,7 +217,7 @@ routerAdd(
 
         if (existing) {
           results.push({
-            filename,
+            filename: filename,
             success: false,
             status: 'duplicated',
             access_key: accessKey,
@@ -139,32 +234,82 @@ routerAdd(
           continue
         }
 
-        // 3. Extrair dados da NF-e
-        const ideBlock = extractXmlTag(xmlContent, 'ide') || xmlContent
-        const number = extractXmlTag(ideBlock, 'nNF') || extractXmlTag(xmlContent, 'nNF') || 'S/N'
-        const series = extractXmlTag(ideBlock, 'serie') || extractXmlTag(xmlContent, 'serie') || '1'
-        const model = extractXmlTag(ideBlock, 'mod') || '55'
-        const operationNature = extractXmlTag(ideBlock, 'natOp') || 'Compra de Fornecedor'
+        // 4. Extração do bloco de identificação (<ide>)
+        const ideBlock =
+          extractXmlTag(infNfeBlock, 'ide') || extractXmlTag(xmlContent, 'ide') || infNfeBlock
 
-        // Data de emissão (dhEmi ou dEmi)
-        let issueDateRaw = extractXmlTag(ideBlock, 'dhEmi') || extractXmlTag(ideBlock, 'dEmi') || ''
+        let number = extractXmlTag(ideBlock, 'nNF') || extractXmlTag(xmlContent, 'nNF') || ''
+        let series = extractXmlTag(ideBlock, 'serie') || extractXmlTag(xmlContent, 'serie') || '1'
+        let model = extractXmlTag(ideBlock, 'mod') || extractXmlTag(xmlContent, 'mod') || '55'
+        let operationNature =
+          extractXmlTag(ideBlock, 'natOp') ||
+          extractXmlTag(xmlContent, 'natOp') ||
+          'Compra de Fornecedor'
+
+        // Se número não veio de tag, tenta extrair da chave de acesso (posições 25..34 da chave de 44 dígitos)
+        // Estrutura chave 44: cUF(2) AAMM(4) CNPJ(14) mod(2) serie(3) nNF(9) tpEmis(1) cNF(8) cDV(1)
+        if (!number && accessKey.length === 44) {
+          const keyNumberStr = accessKey.substring(25, 34)
+          const parsedKeyNum = parseInt(keyNumberStr, 10)
+          number = !isNaN(parsedKeyNum) && parsedKeyNum > 0 ? String(parsedKeyNum) : keyNumberStr
+          if (series === '1') {
+            const keySeriesStr = accessKey.substring(22, 25)
+            const parsedSeries = parseInt(keySeriesStr, 10)
+            if (!isNaN(parsedSeries)) series = String(parsedSeries)
+          }
+        }
+        if (!number) number = 'S/N'
+
+        // 5. Data de emissão (dhEmi ou dEmi)
+        let issueDateRaw =
+          extractXmlTag(ideBlock, 'dhEmi') ||
+          extractXmlTag(ideBlock, 'dEmi') ||
+          extractXmlTag(xmlContent, 'dhEmi') ||
+          extractXmlTag(xmlContent, 'dEmi') ||
+          ''
         let issueDate = ''
         if (issueDateRaw) {
-          issueDate = issueDateRaw.split('T')[0]
+          // Extrai YYYY-MM-DD mesmo que venha com horário (ex: 2026-10-25T14:30:00-03:00)
+          const dateMatch = issueDateRaw.match(/^(\d{4}-\d{2}-\d{2})/)
+          if (dateMatch) {
+            issueDate = dateMatch[1]
+          }
+        }
+        // Fallback da data a partir do AAMM da chave de acesso (posições 2..6)
+        if (!issueDate && accessKey.length === 44) {
+          const yy = accessKey.substring(2, 4)
+          const mm = accessKey.substring(4, 6)
+          const parsedYY = parseInt(yy, 10)
+          const parsedMM = parseInt(mm, 10)
+          if (!isNaN(parsedYY) && !isNaN(parsedMM) && parsedMM >= 1 && parsedMM <= 12) {
+            const fullYear = 2000 + parsedYY
+            const monthStr = parsedMM < 10 ? '0' + parsedMM : String(parsedMM)
+            issueDate = fullYear + '-' + monthStr + '-01'
+          }
         }
         if (!issueDate || !/^\d{4}-\d{2}-\d{2}$/.test(issueDate)) {
           issueDate = new Date().toISOString().split('T')[0]
         }
 
-        // Emitente (emit)
-        const emitBlock = extractXmlTag(xmlContent, 'emit') || ''
+        // 6. Dados do Emitente (<emit>)
+        const emitBlock =
+          extractXmlTag(infNfeBlock, 'emit') || extractXmlTag(xmlContent, 'emit') || ''
         const supplierCnpjRaw =
           extractXmlTag(emitBlock, 'CNPJ') || extractXmlTag(emitBlock, 'CPF') || ''
-        const supplierCnpj = cleanDigits(supplierCnpjRaw)
-        const supplierName = extractXmlTag(emitBlock, 'xNome') || 'FORNECEDOR NÃO IDENTIFICADO'
+        let supplierCnpj = cleanDigits(supplierCnpjRaw)
+
+        // Se CNPJ não veio do bloco emit, recupera da chave de acesso (posições 6..20)
+        if (!supplierCnpj && accessKey.length === 44) {
+          supplierCnpj = accessKey.substring(6, 20)
+        }
+
+        let supplierName = extractXmlTag(emitBlock, 'xNome')
+        if (!supplierName) {
+          supplierName = 'FORNECEDOR ' + (formatCNPJ(supplierCnpj) || 'NÃO IDENTIFICADO')
+        }
         const supplierTradeName = extractXmlTag(emitBlock, 'xFant') || ''
 
-        // Endereço do emitente (enderEmit)
+        // Endereço do emitente (<enderEmit>)
         const enderEmitBlock = extractXmlTag(emitBlock, 'enderEmit') || ''
         const supplierAddressParts = [
           extractXmlTag(enderEmitBlock, 'xLgr'),
@@ -173,36 +318,40 @@ routerAdd(
         ]
         const supplierAddress = supplierAddressParts
           .filter(function (p) {
-            return !!p
+            return !!p && p.trim().length > 0
           })
           .join(', ')
         const supplierCity = extractXmlTag(enderEmitBlock, 'xMun') || ''
         const supplierState = extractXmlTag(enderEmitBlock, 'UF') || ''
 
-        // Totais da NF-e (total -> ICMSTot)
-        const totalBlock = extractXmlTag(xmlContent, 'total') || xmlContent
+        // 7. Totais da NF-e (<total> -> <ICMSTot>)
+        const totalBlock =
+          extractXmlTag(infNfeBlock, 'total') || extractXmlTag(xmlContent, 'total') || infNfeBlock
         const icmsTotBlock = extractXmlTag(totalBlock, 'ICMSTot') || totalBlock
 
-        const totalAmount = parseFloat(extractXmlTag(icmsTotBlock, 'vNF') || '0') || 0
-        const productsAmount =
-          parseFloat(extractXmlTag(icmsTotBlock, 'vProd') || '0') || totalAmount
-        const icmsAmount = parseFloat(extractXmlTag(icmsTotBlock, 'vICMS') || '0') || 0
-        const ipiAmount = parseFloat(extractXmlTag(icmsTotBlock, 'vIPI') || '0') || 0
-        const pisAmount = parseFloat(extractXmlTag(icmsTotBlock, 'vPIS') || '0') || 0
-        const cofinsAmount = parseFloat(extractXmlTag(icmsTotBlock, 'vCOFINS') || '0') || 0
+        let totalAmount = parseNumericField(extractXmlTag(icmsTotBlock, 'vNF'), 0)
+        let productsAmount = parseNumericField(extractXmlTag(icmsTotBlock, 'vProd'), totalAmount)
+        const icmsAmount = parseNumericField(extractXmlTag(icmsTotBlock, 'vICMS'), 0)
+        const ipiAmount = parseNumericField(extractXmlTag(icmsTotBlock, 'vIPI'), 0)
+        const pisAmount = parseNumericField(extractXmlTag(icmsTotBlock, 'vPIS'), 0)
+        const cofinsAmount = parseNumericField(extractXmlTag(icmsTotBlock, 'vCOFINS'), 0)
 
-        // Itens da nota (<det>)
-        const detBlocks = extractXmlBlocks(xmlContent, 'det')
+        // 8. Itens da nota (<det>)
+        const detBlocks = extractXmlBlocks(infNfeBlock, 'det')
         const itemsSummary = []
-        for (let j = 0; j < Math.min(detBlocks.length, 50); j++) {
+        let sumItems = 0
+
+        for (let j = 0; j < Math.min(detBlocks.length, 100); j++) {
           const det = detBlocks[j]
           const prodBlock = extractXmlTag(det, 'prod') || det
-          const code = extractXmlTag(prodBlock, 'cProd')
-          const description = extractXmlTag(prodBlock, 'xProd')
-          const qCom = parseFloat(extractXmlTag(prodBlock, 'qCom') || '1') || 1
+          const code = extractXmlTag(prodBlock, 'cProd') || '#' + (j + 1)
+          const description = extractXmlTag(prodBlock, 'xProd') || 'Item sem descrição'
+          const qCom = parseNumericField(extractXmlTag(prodBlock, 'qCom'), 1)
           const uCom = extractXmlTag(prodBlock, 'uCom') || 'UN'
-          const vUnCom = parseFloat(extractXmlTag(prodBlock, 'vUnCom') || '0') || 0
-          const vProd = parseFloat(extractXmlTag(prodBlock, 'vProd') || '0') || 0
+          const vUnCom = parseNumericField(extractXmlTag(prodBlock, 'vUnCom'), 0)
+          const vProd = parseNumericField(extractXmlTag(prodBlock, 'vProd'), 0)
+          sumItems += vProd
+
           itemsSummary.push({
             nItem: j + 1,
             code: code,
@@ -214,7 +363,15 @@ routerAdd(
           })
         }
 
-        // 4. Verificar se o CNPJ do fornecedor já existe no cadastro de clients/fornecedores
+        // Se vNF estiver zerado mas tivermos produtos, adota a soma dos itens
+        if (totalAmount <= 0 && sumItems > 0) {
+          totalAmount = sumItems
+        }
+        if (productsAmount <= 0 && sumItems > 0) {
+          productsAmount = sumItems
+        }
+
+        // 9. Verificar se o fornecedor já existe no cadastro de clients
         let existingClientOrSupplier = null
         if (supplierCnpj) {
           try {
@@ -238,20 +395,20 @@ routerAdd(
           }
         }
 
-        // 5. Salvar na collection supplier_invoices
+        // 10. Salvar na collection supplier_invoices (com limitação defensiva de tamanhos)
         const invoiceRec = new Record(supplierInvoicesCol)
-        invoiceRec.set('access_key', accessKey)
-        invoiceRec.set('number', number)
-        invoiceRec.set('series', series)
-        invoiceRec.set('model', model)
+        invoiceRec.set('access_key', accessKey.trim())
+        invoiceRec.set('number', truncateStr(number, 30))
+        invoiceRec.set('series', truncateStr(series, 10))
+        invoiceRec.set('model', truncateStr(model, 10))
         invoiceRec.set('issue_date', issueDate)
-        invoiceRec.set('operation_nature', operationNature)
-        invoiceRec.set('supplier_cnpj', formatCNPJ(supplierCnpj) || supplierCnpj)
-        invoiceRec.set('supplier_name', supplierName)
-        invoiceRec.set('supplier_trade_name', supplierTradeName)
-        invoiceRec.set('supplier_state', supplierState)
-        invoiceRec.set('supplier_city', supplierCity)
-        invoiceRec.set('supplier_address', supplierAddress)
+        invoiceRec.set('operation_nature', truncateStr(operationNature, 200))
+        invoiceRec.set('supplier_cnpj', truncateStr(formatCNPJ(supplierCnpj) || supplierCnpj, 30))
+        invoiceRec.set('supplier_name', truncateStr(supplierName, 255))
+        invoiceRec.set('supplier_trade_name', truncateStr(supplierTradeName, 255))
+        invoiceRec.set('supplier_state', truncateStr(supplierState, 10))
+        invoiceRec.set('supplier_city', truncateStr(supplierCity, 100))
+        invoiceRec.set('supplier_address', truncateStr(supplierAddress, 300))
         invoiceRec.set('total_amount', totalAmount)
         invoiceRec.set('products_amount', productsAmount)
         invoiceRec.set('icms_amount', icmsAmount)
@@ -259,9 +416,9 @@ routerAdd(
         invoiceRec.set('pis_amount', pisAmount)
         invoiceRec.set('cofins_amount', cofinsAmount)
         invoiceRec.set('items_summary', itemsSummary)
-        invoiceRec.set('xml_filename', filename)
+        invoiceRec.set('xml_filename', truncateStr(filename, 255))
         invoiceRec.set('import_source', 'xml_manual')
-
+        // Armazena XML completo ou truncado defensivamente (campo text do SQLite suporta MBs, mas limitamos a 500k)
         if (xmlContent.length <= 500000) {
           invoiceRec.set('raw_xml', xmlContent)
         } else {
@@ -270,37 +427,44 @@ routerAdd(
 
         $app.save(invoiceRec)
 
-        // 6. Criar automaticamente o lançamento de Saída no Fluxo de Caixa (cashflow_entries)
-        const cashflowRec = new Record(cashflowCol)
-        cashflowRec.set('type', 'Saída')
-        cashflowRec.set('date', issueDate)
-        cashflowRec.set('description', 'NF-e entrada Nº ' + number + ' — ' + supplierName)
-        cashflowRec.set('amount', totalAmount)
-        cashflowRec.set('category', 'Fornecedores')
-        cashflowRec.set('origin', 'nfe_fornecedor')
-        cashflowRec.set('status', 'Realizado')
-        cashflowRec.set('supplier_invoice', invoiceRec.id)
-        cashflowRec.set(
-          'notes',
-          'Chave NF-e: ' +
-            accessKey +
-            '\nCNPJ: ' +
-            (formatCNPJ(supplierCnpj) || supplierCnpj) +
-            '\nNatureza: ' +
-            operationNature,
-        )
-        $app.save(cashflowRec)
+        // 11. Criar automaticamente o lançamento de Saída no Fluxo de Caixa (cashflow_entries)
+        let cashflowId = ''
+        try {
+          const cashflowRec = new Record(cashflowCol)
+          cashflowRec.set('type', 'Saída')
+          cashflowRec.set('date', issueDate)
+          cashflowRec.set('description', 'NF-e entrada Nº ' + number + ' — ' + supplierName)
+          cashflowRec.set('amount', totalAmount)
+          cashflowRec.set('category', 'Fornecedores')
+          cashflowRec.set('origin', 'nfe_fornecedor')
+          cashflowRec.set('status', 'Realizado')
+          cashflowRec.set('supplier_invoice', invoiceRec.id)
+          cashflowRec.set(
+            'notes',
+            'Chave NF-e: ' +
+              accessKey +
+              '\nCNPJ: ' +
+              (formatCNPJ(supplierCnpj) || supplierCnpj) +
+              '\nNatureza: ' +
+              operationNature,
+          )
+          $app.save(cashflowRec)
+          cashflowId = cashflowRec.id
 
-        // Vincular o id do cashflow de volta na supplier_invoice
-        invoiceRec.set('cashflow_entry', cashflowRec.id)
-        $app.save(invoiceRec)
+          // Vincular id do cashflow na supplier_invoice
+          invoiceRec.set('cashflow_entry', cashflowRec.id)
+          $app.save(invoiceRec)
+        } catch (cashErr) {
+          console.error('[supplier_invoices] Erro ao criar lançamento de caixa:', cashErr)
+          // Se falhou o lançamento de caixa mas a nota gravou, não cancelamos a importação da nota
+        }
 
         results.push({
           filename: filename,
           success: true,
           status: 'imported',
           invoice_id: invoiceRec.id,
-          cashflow_id: cashflowRec.id,
+          cashflow_id: cashflowId,
           access_key: accessKey,
           number: number,
           series: series,
