@@ -56,7 +56,21 @@ export default function Login() {
       navigate(from, { replace: true })
     } catch (err: unknown) {
       console.error('Falha de login:', err)
-      setError('Credenciais inválidas. Verifique seu e-mail e senha e tente novamente.')
+      // Erro de rede/backend (backend fora do ar, URL incorreta etc.)
+      // não deve aparecer como "credenciais inválidas".
+      const isNetworkError =
+        err instanceof TypeError ||
+        (typeof err === 'object' &&
+          err !== null &&
+          'status' in err &&
+          (err as { status?: number }).status === 0)
+      if (isNetworkError) {
+        setError(
+          'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente em instantes.',
+        )
+      } else {
+        setError('Credenciais inválidas. Verifique seu e-mail e senha e tente novamente.')
+      }
     } finally {
       setLoading(false)
     }

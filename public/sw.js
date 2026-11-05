@@ -1,15 +1,18 @@
 /**
- * Service Worker Corteplan — Gestão
+ * Service Worker Corteplan — Gestão (v2)
  * Estratégia:
- * 1. App Shell e assets estáticos (HTML, JS, CSS, fontes, ícones, imagens estáticas):
- *    Cache-first com fallback para rede.
- * 2. Requisições de API (PocketBase /api/*):
- *    Network-first estrito para nunca servir dados mutáveis incorretos / desatualizados,
- *    com fallback para cache em caso de ausência total de conexão para permitir visualização offline básica.
+ * 1. App Shell (HTML de navegação) e assets com hash no nome (bundles Vite):
+ *    NETWORK-FIRST — sempre busca a versão nova no servidor; o cache só é
+ *    usado quando o usuário está offline. Isso garante que cada deploy seja
+ *    pego na próxima recarga, sem cache antigo travando o login.
+ * 2. Assets estáticos sem hash (ícones, manifest, imagens fixas):
+ *    cache-first com atualização em background (stale-while-revalidate).
+ * 3. Requisições de API (PocketBase /api/*):
+ *    Network-first estrito, com fallback para cache apenas offline.
  */
 
-const CACHE_NAME = 'corteplan-shell-v1'
-const API_CACHE_NAME = 'corteplan-api-v1'
+const CACHE_NAME = 'corteplan-shell-v2'
+const API_CACHE_NAME = 'corteplan-api-v2'
 
 const APP_SHELL_ASSETS = [
   '/',
@@ -20,7 +23,7 @@ const APP_SHELL_ASSETS = [
   '/icon-512.svg',
 ]
 
-// Instalação: pré-cache do shell mínimo
+// Instalação: pré-cache do shell mínimo e ativação imediata
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
@@ -30,7 +33,7 @@ self.addEventListener('install', (event) => {
   )
 })
 
-// Ativação: limpeza de caches antigos
+// Ativação: limpeza de caches antigos (inclusive v1) e controle imediato
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
@@ -47,6 +50,13 @@ self.addEventListener('activate', (event) => {
       })
       .then(() => self.clients.claim()),
   )
+})
+
+// Permite que a página peça ativação imediata da nova versão do SW
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
 })
 
 // Interceptação de requisições
@@ -104,12 +114,38 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // 2. ESTRATÉGIA CACHE-FIRST COM ATUALIZAÇÃO EM BACKGROUND PARA APP SHELL E ASSETS
-  // (Navegações HTML e arquivos estáticos .js, .css, imagens, fontes)
-  if (
-    request.mode === 'navigate' ||
-    url.pathname.match(/\.(js|css|svg|png|jpg|jpeg|webp|woff2?|ico)$/)
-  ) {
+  // Asset com hash no nome (bundle Vite: app-3f9a2b1c.js) OU navegação HTML:
+  // NETWORK-FIRST — a rede manda; o cache só entra quando offline.
+  const isHashedAsset =
+    /\.[\w-]{8}\.(js|css|mjs)$/.test(url.pathname) || /-[a-f0-9]{8,}\./.test(url.pathname)
+  const isNavigation = request.mode === 'navigate'
+
+  if (isNavigation || isHashedAsset) {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone()
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+          }
+          return networkResponse
+        })
+        .catch(async () => {
+          // Offline: serve do cache; navegações caem no index.html em cache
+          const cachedResponse = await caches.match(request)
+          if (cachedResponse) return cachedResponse
+          if (isNavigation) {
+            return (await caches.match('/index.html')) || (await caches.match('/'))
+          }
+          return undefined
+        }),
+    )
+    return
+  }
+
+  // 2. Assets estáticos SEM hash (ícones, imagens, fontes):
+  //    cache-first com atualização em background.
+  if (url.pathname.match(/\.(js|css|svg|png|jpg|jpeg|webp|woff2?|ico)$/)) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
         const fetchPromise = fetch(request)
@@ -120,13 +156,7 @@ self.addEventListener('fetch', (event) => {
             }
             return networkResponse
           })
-          .catch(() => {
-            // Em navegações de rotas React Router quando offline, retorna index.html em cache
-            if (request.mode === 'navigate') {
-              return caches.match('/index.html')
-            }
-            return undefined
-          })
+          .catch(() => cachedResponse)
 
         return cachedResponse || fetchPromise
       }),
