@@ -224,6 +224,16 @@
     margin: 0 !important;
   }
 
+  /* Selo "Criado com o Skip" (injetado pela plataforma via goskip.dev/skip.js):
+     removido do DOM por src/lib/removeSkipBadge.ts. Aqui fica a segunda
+     barreira: na impressão/PDF o selo nunca pode aparecer, em nenhuma página. */
+  a[href*='goskip.dev'],
+  [data-skip-badge],
+  [id^='skip-badge'],
+  [class*='skip-badge'] {
+    display: none !important;
+  }
+
   /* Rodapé institucional fixo na margem inferior da página sem invadir o conteúdo */
   .print-fixed-footer {
     display: block !important;
@@ -273,6 +283,16 @@
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
+}
+
+/* Selo "Criado com o Skip" (injetado pela plataforma via goskip.dev/skip.js):
+   removido do DOM por src/lib/removeSkipBadge.ts; em tela também fica oculto
+   para que nunca faça parte do layout da folha de impressão. */
+a[href*='goskip.dev'],
+[data-skip-badge],
+[id^='skip-badge'],
+[class*='skip-badge'] {
+  display: none !important;
 }
 
 @layer utilities {

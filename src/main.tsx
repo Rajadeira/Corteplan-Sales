@@ -2,6 +2,7 @@
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './main.css'
+import { startSkipBadgeRemoval } from './lib/removeSkipBadge'
 
 // Registro do Service Worker do PWA com atualização automática:
 // se existir um SW novo esperando, ele é ativado e a página recarrega uma vez,
@@ -55,3 +56,6 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 
 // @skip-protected: Do not remove. Required for React rendering.
 createRoot(document.getElementById('root')!).render(<App />)
+
+// Remove o selo "Criado com o Skip" injetado pela plataforma (incl. PDFs)
+startSkipBadgeRemoval()
