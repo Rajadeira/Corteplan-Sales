@@ -519,6 +519,53 @@ export function calculateItemTotalWithTax(
   return Math.round((itemPriceTotal + defaultTax) * 100) / 100
 }
 
+/**
+ * MÉTODO NOVO DE DECOMPOSIÇÃO FISCAL (validado ao centavo contra a NF-e 1175):
+ * a partir do Total com Impostos da proposta (que NÃO muda), decompõe os tributos:
+ *   1. baseProdutos = TotalComImpostos ÷ (1 + alíquotaIPI)
+ *   2. IPI    = baseProdutos × alíquotaIPI
+ *   3. ICMS   = (baseProdutos + IPI) × alíquotaICMS
+ *   4. PIS    = baseProdutos × alíquotaPIS
+ *   5. COFINS = baseProdutos × alíquotaCOFINS
+ *
+ * Exemplo de conferência (total R$ 2.850,00; ICMS 12%, IPI 3,25%, PIS 0,65%, COFINS 3%):
+ * baseProdutos 3.281,99 · IPI 106,66 · ICMS 406,64 · PIS 21,33 · COFINS 98,46 · Total 3.388,65.
+ */
+export function decomposeTaxes(
+  totalWithTax: number,
+  ratesPercent?: {
+    icmsPercent?: number
+    ipiPercent?: number
+    pisPercent?: number
+    cofinsPercent?: number
+  },
+): { base: number; icms: number; ipi: number; pis: number; cofins: number } {
+  const round2 = (v: number) => Math.round(v * 100) / 100
+  const total = Number(totalWithTax) || 0
+  const ipiRate = (Number(ratesPercent?.ipiPercent) || 0) / 100
+  const icmsRate = (Number(ratesPercent?.icmsPercent) || 0) / 100
+  const pisRate = (Number(ratesPercent?.pisPercent) || 0) / 100
+  const cofinsRate = (Number(ratesPercent?.cofinsPercent) || 0) / 100
+
+  if (total <= 0) {
+    return { base: 0, icms: 0, ipi: 0, pis: 0, cofins: 0 }
+  }
+
+  const base = total / (1 + ipiRate)
+  const ipi = base * ipiRate
+  const icms = (base + ipi) * icmsRate
+  const pis = base * pisRate
+  const cofins = base * cofinsRate
+
+  return {
+    base: round2(base),
+    icms: round2(icms),
+    ipi: round2(ipi),
+    pis: round2(pis),
+    cofins: round2(cofins),
+  }
+}
+
 export function formatCurrencyBRL(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',

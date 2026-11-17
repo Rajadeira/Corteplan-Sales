@@ -55,6 +55,7 @@ import {
   ITEM_CATEGORIES,
   calculateCommission,
   calculateItemTotalWithTax,
+  decomposeTaxes,
 } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -2533,38 +2534,39 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                 </div>
               </div>
 
-              {/* Discriminativo de Impostos */}
-              {taxesTotal > 0 && (
-                <div className="pt-2 border-t border-slate-100 space-y-1 text-xs text-slate-600">
-                  <div className="font-bold text-slate-700 text-[11px] uppercase">
-                    Impostos discriminados
+              {/* Discriminativo de Impostos — decomposição fiscal (método NF-e 1175) sobre o Total com Impostos */}
+              {(() => {
+                const d = decomposeTaxes(total, {
+                  icmsPercent,
+                  ipiPercent,
+                  pisPercent,
+                  cofinsPercent,
+                })
+                const rows: Array<[string, number]> = [
+                  ['Base Produtos', d.base],
+                  ['ICMS', d.icms],
+                  ['IPI', d.ipi],
+                  ['PIS', d.pis],
+                  ['COFINS', d.cofins],
+                ]
+                const hasVal = rows.some(([, v]) => v > 0)
+                if (!hasVal) return null
+                return (
+                  <div className="pt-2 border-t border-slate-100 space-y-1 text-xs text-slate-600">
+                    <div className="font-bold text-slate-700 text-[11px] uppercase">
+                      Impostos discriminados
+                    </div>
+                    {rows.map(([label, v]) =>
+                      v > 0 ? (
+                        <div key={label} className="flex justify-between">
+                          <span>{label}</span>
+                          <span className="font-mono">{formatCurrencyBRL(v)}</span>
+                        </div>
+                      ) : null,
+                    )}
                   </div>
-                  {icms > 0 && (
-                    <div className="flex justify-between">
-                      <span>ICMS</span>
-                      <span className="font-mono">{formatCurrencyBRL(icms)}</span>
-                    </div>
-                  )}
-                  {ipi > 0 && (
-                    <div className="flex justify-between">
-                      <span>IPI</span>
-                      <span className="font-mono">{formatCurrencyBRL(ipi)}</span>
-                    </div>
-                  )}
-                  {pis > 0 && (
-                    <div className="flex justify-between">
-                      <span>PIS</span>
-                      <span className="font-mono">{formatCurrencyBRL(pis)}</span>
-                    </div>
-                  )}
-                  {cofins > 0 && (
-                    <div className="flex justify-between">
-                      <span>COFINS</span>
-                      <span className="font-mono">{formatCurrencyBRL(cofins)}</span>
-                    </div>
-                  )}
-                </div>
-              )}
+                )
+              })()}
 
               {/* Total Geral em Destaque */}
               <div className="pt-4 border-t-2 border-slate-200 space-y-1">

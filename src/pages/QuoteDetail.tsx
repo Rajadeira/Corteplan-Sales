@@ -61,6 +61,7 @@ import {
   maskPhoneBR,
   calculateCommission,
   calculateItemTotalWithTax,
+  decomposeTaxes,
   CORTEPLAN_COMPANY_INFO,
 } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -475,10 +476,20 @@ export default function QuoteDetail() {
 
   // Totais: produtos = subtotal; se tiver impostos detalhados
   const produtosTotal = quote.subtotal || 0
-  const icmsVal = quote.icms || 0
-  const ipiVal = quote.ipi || 0
-  const pisVal = quote.pis || 0
-  const cofinsVal = quote.cofins || 0
+  // Decomposição fiscal (método NF-e 1175) a partir do Total com Impostos (que não muda).
+  // As alíquotas são derivadas dos valores salvos (R$) em relação ao subtotal,
+  // e a decomposição parte do Total com Impostos da proposta.
+  const taxDecomp = decomposeTaxes(quote.total, {
+    icmsPercent: produtosTotal > 0 ? ((quote.icms || 0) / produtosTotal) * 100 : 0,
+    ipiPercent: produtosTotal > 0 ? ((quote.ipi || 0) / produtosTotal) * 100 : 0,
+    pisPercent: produtosTotal > 0 ? ((quote.pis || 0) / produtosTotal) * 100 : 0,
+    cofinsPercent: produtosTotal > 0 ? ((quote.cofins || 0) / produtosTotal) * 100 : 0,
+  })
+  const baseProdutosVal = taxDecomp.base
+  const icmsVal = taxDecomp.icms
+  const ipiVal = taxDecomp.ipi
+  const pisVal = taxDecomp.pis
+  const cofinsVal = taxDecomp.cofins
   const hasTaxBreakdown = icmsVal > 0 || ipiVal > 0 || pisVal > 0 || cofinsVal > 0
 
   const sellerName = quote.seller || user?.name || 'Gustavo Tibério'
@@ -1120,6 +1131,12 @@ export default function QuoteDetail() {
 
                         {hasTaxBreakdown ? (
                           <>
+                            <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                              <span>Base Produtos:</span>
+                              <span className="font-mono">
+                                {formatCurrencyBRL(baseProdutosVal)}
+                              </span>
+                            </div>
                             <div className="flex justify-between items-center text-slate-600 text-[11px]">
                               <span>ICMS:</span>
                               <span className="font-mono">{formatCurrencyBRL(icmsVal)}</span>

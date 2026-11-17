@@ -39,6 +39,7 @@ import {
   formatQuoteNumber,
   maskPhoneBR,
   calculateItemTotalWithTax,
+  decomposeTaxes,
   CORTEPLAN_COMPANY_INFO,
 } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -284,10 +285,19 @@ export default function OrderDetail() {
 
   const client = order.expand?.client
   const produtosTotal = order.subtotal || 0
-  const icmsVal = order.icms || 0
-  const ipiVal = order.ipi || 0
-  const pisVal = order.pis || 0
-  const cofinsVal = order.cofins || 0
+  // Decomposição fiscal (método NF-e 1175) a partir do Total com Impostos (que não muda):
+  // alíquotas derivadas dos valores salvos (R$) sobre o subtotal, decomposição a partir do total.
+  const taxDecomp = decomposeTaxes(order.total, {
+    icmsPercent: produtosTotal > 0 ? ((order.icms || 0) / produtosTotal) * 100 : 0,
+    ipiPercent: produtosTotal > 0 ? ((order.ipi || 0) / produtosTotal) * 100 : 0,
+    pisPercent: produtosTotal > 0 ? ((order.pis || 0) / produtosTotal) * 100 : 0,
+    cofinsPercent: produtosTotal > 0 ? ((order.cofins || 0) / produtosTotal) * 100 : 0,
+  })
+  const baseProdutosVal = taxDecomp.base
+  const icmsVal = taxDecomp.icms
+  const ipiVal = taxDecomp.ipi
+  const pisVal = taxDecomp.pis
+  const cofinsVal = taxDecomp.cofins
   const hasTaxBreakdown = icmsVal > 0 || ipiVal > 0 || pisVal > 0 || cofinsVal > 0
 
   const sellerName =
@@ -796,6 +806,10 @@ export default function OrderDetail() {
 
                       {hasTaxBreakdown ? (
                         <>
+                          <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                            <span>Base Produtos:</span>
+                            <span className="font-mono">{formatCurrencyBRL(baseProdutosVal)}</span>
+                          </div>
                           <div className="flex justify-between items-center text-slate-600 text-[11px]">
                             <span>ICMS:</span>
                             <span className="font-mono">{formatCurrencyBRL(icmsVal)}</span>
