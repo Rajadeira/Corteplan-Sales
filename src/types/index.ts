@@ -478,82 +478,87 @@ export const DEFAULT_TOTAL_TAX_PERCENT =
   DEFAULT_TAX_RATES.cofinsPercent // 18.9
 
 /**
- * Calcula o valor de cada item acrescido dos impostos configurados na proposta
- * (ICMS, IPI, PIS, COFINS aplicados sobre o valor do item).
+ * REGRA NF-e CORTEPLAN: o preço do produto JÁ INCLUI ICMS, PIS e COFINS (apenas
+ * informativos, "inclusos no preço"); SOMENTE o IPI é ACRESCIDO ao total.
+ *   Total do item = Valor do item + IPI do item.
  *
- * Garante que a soma dos itens com imposto feche de forma exata com o total com impostos
- * já calculado no bloco de totais da proposta, inclusive quando houver desconto comercial
- * ou alíquotas personalizadas.
+ * O IPI do item pode vir de:
+ *   - explicitItemIpi (IPI unitário, ex: item.tax após a nova regra) × quantidade;
+ *   - rateio proporcional do IPI total da proposta (ipiTotal) sobre o subtotal
+ *     (usado na re-leitura de propostas antigas: recalcula pela regra nova a
+ *     partir dos valores salvos, sem migrar dados);
+ *   - alíquota IPI direta (ipiRatePercent), quando os valores salvos não existem.
  */
 export function calculateItemTotalWithTax(
   itemPriceTotal: number,
   subtotal: number,
-  taxesTotal: number,
-  taxRatesPercent?: number,
-  explicitItemTax?: number,
+  ipiTotal: number,
+  ipiRatePercent?: number,
+  explicitItemIpi?: number,
   quantity: number = 1,
 ): number {
-  if (itemPriceTotal <= 0 && (!explicitItemTax || explicitItemTax <= 0)) return 0
+  if (itemPriceTotal <= 0 && (!explicitItemIpi || explicitItemIpi <= 0)) return 0
 
-  // Se o item tiver imposto unitário explícito informado / calculado (ex: item.tax)
-  // Total com Imposto = Total dos Itens + (Imposto por unidade × Quantidade)
-  if (explicitItemTax !== undefined && explicitItemTax > 0) {
+  // IPI unitário explícito informado/calculado (ex: item.tax sob a regra nova)
+  if (explicitItemIpi !== undefined && explicitItemIpi > 0) {
     const qty = Number(quantity) > 0 ? Number(quantity) : 1
-    return Math.round((itemPriceTotal + explicitItemTax * qty) * 100) / 100
+    return Math.round((itemPriceTotal + explicitItemIpi * qty) * 100) / 100
   }
 
-  // Se tiver taxesTotal e subtotal conhecidos da proposta/pedido
-  if (subtotal > 0 && taxesTotal > 0) {
-    const itemTax = (itemPriceTotal / subtotal) * taxesTotal
-    return Math.round((itemPriceTotal + itemTax) * 100) / 100
+  // Rateio proporcional do IPI total da proposta sobre o subtotal
+  if (subtotal > 0 && ipiTotal > 0) {
+    const itemIpi = (itemPriceTotal / subtotal) * ipiTotal
+    return Math.round((itemPriceTotal + itemIpi) * 100) / 100
   }
 
-  // Se tiver uma alíquota somada explícita (ex: 18.9%)
-  if (taxRatesPercent !== undefined && taxRatesPercent > 0) {
-    const itemTax = (itemPriceTotal * taxRatesPercent) / 100
-    return Math.round((itemPriceTotal + itemTax) * 100) / 100
+  // Alíquota IPI direta
+  if (ipiRatePercent !== undefined && ipiRatePercent > 0) {
+    const itemIpi = (itemPriceTotal * ipiRatePercent) / 100
+    return Math.round((itemPriceTotal + itemIpi) * 100) / 100
   }
 
-  // Padrão de fallback: alíquota oficial Corteplan 18,90%
-  const defaultTax = (itemPriceTotal * DEFAULT_TOTAL_TAX_PERCENT) / 100
-  return Math.round((itemPriceTotal + defaultTax) * 100) / 100
+  // Sem IPI configurado: total com impostos = valor do item
+  return Math.round(itemPriceTotal * 100) / 100
 }
 
 /**
- * MÉTODO NOVO DE DECOMPOSIÇÃO FISCAL (validado ao centavo contra a NF-e 1175):
- * a partir do Total com Impostos da proposta (que NÃO muda), decompõe os tributos:
- *   1. baseProdutos = TotalComImpostos ÷ (1 + alíquotaIPI)
- *   2. IPI    = baseProdutos × alíquotaIPI
- *   3. ICMS   = (baseProdutos + IPI) × alíquotaICMS
- *   4. PIS    = baseProdutos × alíquotaPIS
- *   5. COFINS = baseProdutos × alíquotaCOFINS
+ * MÉTODO DE DECOMPOSIÇÃO FISCAL (regra de totalização da NF-e — decisão do usuário):
+ * o preço do produto JÁ INCLUI ICMS, PIS e COFINS, que aparecem destacados apenas
+ * para informação ("inclusos no preço") e NÃO são somados novamente ao total.
+ * SOMENTE o IPI é ACRESCIDO:
+ *   1. base     = valor dos produtos (informado)
+ *   2. IPI      = base × alíquotaIPI            (acrescido)
+ *   3. ICMS     = base × alíquotaICMS           (incluso, informativo)
+ *   4. PIS      = base × alíquotaPIS            (incluso, informativo)
+ *   5. COFINS   = base × alíquotaCOFINS         (incluso, informativo)
+ *   6. TOTAL    = base + IPI                    (= total da NF-e, sem frete/ST no caso padrão)
  *
- * Exemplo de conferência (total R$ 2.850,00; ICMS 12%, IPI 3,25%, PIS 0,65%, COFINS 3%):
- * baseProdutos 3.281,99 · IPI 106,66 · ICMS 406,64 · PIS 21,33 · COFINS 98,46 · Total 3.388,65.
+ * Exemplo de conferência (produto R$ 6.500,00; ICMS 12%, IPI 3,25%, PIS 0,65%, COFINS 3%):
+ * Produtos 6.500,00 · ICMS 780,00 (incluso) · IPI 211,25 (acrescido) · PIS 42,25 (incluso) ·
+ * COFINS 195,00 (incluso) · TOTAL 6.711,25.
  */
 export function decomposeTaxes(
-  totalWithTax: number,
+  baseProdutos: number,
   ratesPercent?: {
     icmsPercent?: number
     ipiPercent?: number
     pisPercent?: number
     cofinsPercent?: number
   },
-): { base: number; icms: number; ipi: number; pis: number; cofins: number } {
+): { base: number; icms: number; ipi: number; pis: number; cofins: number; total: number } {
   const round2 = (v: number) => Math.round(v * 100) / 100
-  const total = Number(totalWithTax) || 0
+  const base = Number(baseProdutos) || 0
   const ipiRate = (Number(ratesPercent?.ipiPercent) || 0) / 100
   const icmsRate = (Number(ratesPercent?.icmsPercent) || 0) / 100
   const pisRate = (Number(ratesPercent?.pisPercent) || 0) / 100
   const cofinsRate = (Number(ratesPercent?.cofinsPercent) || 0) / 100
 
-  if (total <= 0) {
-    return { base: 0, icms: 0, ipi: 0, pis: 0, cofins: 0 }
+  if (base <= 0) {
+    return { base: 0, icms: 0, ipi: 0, pis: 0, cofins: 0, total: 0 }
   }
 
-  const base = total / (1 + ipiRate)
   const ipi = base * ipiRate
-  const icms = (base + ipi) * icmsRate
+  const icms = base * icmsRate
   const pis = base * pisRate
   const cofins = base * cofinsRate
 
@@ -563,6 +568,7 @@ export function decomposeTaxes(
     ipi: round2(ipi),
     pis: round2(pis),
     cofins: round2(cofins),
+    total: round2(base + ipi),
   }
 }
 

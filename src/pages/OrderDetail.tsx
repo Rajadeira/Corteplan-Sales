@@ -285,9 +285,10 @@ export default function OrderDetail() {
 
   const client = order.expand?.client
   const produtosTotal = order.subtotal || 0
-  // Decomposição fiscal (método NF-e 1175) a partir do Total com Impostos (que não muda):
-  // alíquotas derivadas dos valores salvos (R$) sobre o subtotal, decomposição a partir do total.
-  const taxDecomp = decomposeTaxes(order.total, {
+  // Quadro de impostos — regra NF-e Corteplan: ICMS/PIS/COFINS inclusos no preço
+  // (informativos), IPI acrescido. Pedidos antigos são recalculados pela regra nova
+  // a partir dos valores salvos (apenas exibição; dados não são migrados).
+  const taxDecomp = decomposeTaxes(produtosTotal - (order.discount_value || 0), {
     icmsPercent: produtosTotal > 0 ? ((order.icms || 0) / produtosTotal) * 100 : 0,
     ipiPercent: produtosTotal > 0 ? ((order.ipi || 0) / produtosTotal) * 100 : 0,
     pisPercent: produtosTotal > 0 ? ((order.pis || 0) / produtosTotal) * 100 : 0,
@@ -807,24 +808,44 @@ export default function OrderDetail() {
                       {hasTaxBreakdown ? (
                         <>
                           <div className="flex justify-between items-center text-slate-600 text-[11px]">
-                            <span>Base Produtos:</span>
+                            <span>Produtos:</span>
                             <span className="font-mono">{formatCurrencyBRL(baseProdutosVal)}</span>
                           </div>
                           <div className="flex justify-between items-center text-slate-600 text-[11px]">
-                            <span>ICMS:</span>
+                            <span>
+                              ICMS <span className="text-[10px] text-slate-400">(incluso)</span>:
+                            </span>
                             <span className="font-mono">{formatCurrencyBRL(icmsVal)}</span>
                           </div>
                           <div className="flex justify-between items-center text-slate-600 text-[11px]">
-                            <span>IPI:</span>
+                            <span>
+                              IPI{' '}
+                              <span className="text-[10px] text-amber-700 font-medium">
+                                (acrescido)
+                              </span>
+                              :
+                            </span>
                             <span className="font-mono">{formatCurrencyBRL(ipiVal)}</span>
                           </div>
                           <div className="flex justify-between items-center text-slate-600 text-[11px]">
-                            <span>PIS:</span>
+                            <span>
+                              PIS <span className="text-[10px] text-slate-400">(incluso)</span>:
+                            </span>
                             <span className="font-mono">{formatCurrencyBRL(pisVal)}</span>
                           </div>
                           <div className="flex justify-between items-center text-slate-600 text-[11px]">
-                            <span>COFINS:</span>
+                            <span>
+                              COFINS <span className="text-[10px] text-slate-400">(incluso)</span>:
+                            </span>
                             <span className="font-mono">{formatCurrencyBRL(cofinsVal)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-slate-900 text-[11px] font-semibold pt-1 border-t border-slate-200">
+                            <span>TOTAL (Produtos + IPI):</span>
+                            <span className="font-mono">
+                              {formatCurrencyBRL(
+                                Math.round((baseProdutosVal + ipiVal) * 100) / 100,
+                              )}
+                            </span>
                           </div>
                         </>
                       ) : null}

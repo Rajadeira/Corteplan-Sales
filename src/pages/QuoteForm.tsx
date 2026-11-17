@@ -366,19 +366,16 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
         ? Math.round(((Number(discountValue) || 0) / subtotal) * 10000) / 100
         : 0
 
-  // Soma total das alíquotas configuradas (ex: 12% + 3.25% + 0.65% + 3% = 18.90%)
-  const combinedTaxRatePercent =
-    (Number(icmsPercent) || 0) +
-    (Number(ipiPercent) || 0) +
-    (Number(pisPercent) || 0) +
-    (Number(cofinsPercent) || 0)
+  // REGRA NF-e CORTEPLAN: preço do produto JÁ INCLUI ICMS, PIS e COFINS (informativos,
+  // "inclusos no preço"); SOMENTE o IPI é ACRESCIDO ao total.
+  // "Total com Impostos" = Valor dos itens + IPI (o mesmo do item, da proposta e da NF-e).
+  const combinedTaxRatePercent = Number(ipiPercent) || 0
 
-  // Auto-cálculo de imposto nos itens:
+  // Auto-cálculo de imposto nos itens (SOMENTE IPI):
   // Se o usuário não tiver fixado manualmente o imposto deste item,
-  // calcula automaticamente: (unit_price * alíquota_total).
+  // calcula automaticamente: unit_price × alíquota IPI.
   // Quando o usuário apaga ou altera unit_price, o imposto se ajusta sozinho.
   useEffect(() => {
-    if (combinedTaxRatePercent <= 0) return
     setItems((prevItems) => {
       let changed = false
       const updated = prevItems.map((item, idx) => {
@@ -388,7 +385,7 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
           return item
         }
         const unitPrice = Number(item.unit_price) || 0
-        // Cálculo automático: unit_price * alíquota somada (ex: 377.28 * 18.9% = 71.31)
+        // Cálculo automático: unit_price × alíquota IPI (ex: 6.500,00 × 3,25% = 211,25)
         const autoTax =
           unitPrice > 0 ? Math.round(((unitPrice * combinedTaxRatePercent) / 100) * 100) / 100 : 0
         if (item.tax !== autoTax) {
@@ -401,59 +398,25 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
     })
   }, [combinedTaxRatePercent, manuallyEditedItemTaxIds])
 
-  // Soma total de impostos informados/calculados nos itens
-  const sumItemsTax = items.reduce((acc, it) => {
-    const qty = Number(it.quantity) || 0
-    const itemTax = Number(it.tax) || 0
-    // O campo 'tax' do item é o imposto por unidade ou total da linha.
-    // Na convenção padrão Corteplan, quando item.tax é fornecido, ele multiplica pela quantidade
-    // ou se já for o total da linha: somamos it.tax * qty para consistência com unit_price * qty
-    return acc + itemTax * qty
-  }, 0)
-
-  // Recalcular impostos quando subtotal muda (impostos calculados sobre o subtotal ou sincronizados com itens)
+  // Impostos da proposta: ICMS/PIS/COFINS inclusos (informativos) e IPI acrescido,
+  // sempre calculados sobre o subtotal (valor dos produtos).
   useEffect(() => {
     if (taxMode === 'percent') {
-      if (sumItemsTax > 0 && combinedTaxRatePercent > 0) {
-        const calcIcms =
-          Math.round(sumItemsTax * ((Number(icmsPercent) || 0) / combinedTaxRatePercent) * 100) /
-          100
-        const calcIpi =
-          Math.round(sumItemsTax * ((Number(ipiPercent) || 0) / combinedTaxRatePercent) * 100) / 100
-        const calcPis =
-          Math.round(sumItemsTax * ((Number(pisPercent) || 0) / combinedTaxRatePercent) * 100) / 100
-        const calcCofins = Math.round((sumItemsTax - calcIcms - calcIpi - calcPis) * 100) / 100
+      const calcIcms = Math.round(((subtotal * (Number(icmsPercent) || 0)) / 100) * 100) / 100
+      const calcIpi = Math.round(((subtotal * (Number(ipiPercent) || 0)) / 100) * 100) / 100
+      const calcPis = Math.round(((subtotal * (Number(pisPercent) || 0)) / 100) * 100) / 100
+      const calcCofins = Math.round(((subtotal * (Number(cofinsPercent) || 0)) / 100) * 100) / 100
 
-        setIcms(calcIcms)
-        setIpi(calcIpi)
-        setPis(calcPis)
-        setCofins(calcCofins)
-      } else {
-        const calcIcms = Math.round(((subtotal * (Number(icmsPercent) || 0)) / 100) * 100) / 100
-        const calcIpi = Math.round(((subtotal * (Number(ipiPercent) || 0)) / 100) * 100) / 100
-        const calcPis = Math.round(((subtotal * (Number(pisPercent) || 0)) / 100) * 100) / 100
-        const calcCofins = Math.round(((subtotal * (Number(cofinsPercent) || 0)) / 100) * 100) / 100
-
-        setIcms(calcIcms)
-        setIpi(calcIpi)
-        setPis(calcPis)
-        setCofins(calcCofins)
-      }
+      setIcms(calcIcms)
+      setIpi(calcIpi)
+      setPis(calcPis)
+      setCofins(calcCofins)
     }
-  }, [
-    subtotal,
-    sumItemsTax,
-    combinedTaxRatePercent,
-    icmsPercent,
-    ipiPercent,
-    pisPercent,
-    cofinsPercent,
-    taxMode,
-  ])
+  }, [subtotal, icmsPercent, ipiPercent, pisPercent, cofinsPercent, taxMode])
 
-  const taxesTotal =
-    (Number(icms) || 0) + (Number(ipi) || 0) + (Number(pis) || 0) + (Number(cofins) || 0)
-  // Total da proposta: se houver impostos discriminados, soma ao subtotal líquido; caso contrário subtotal - desconto
+  // Somente o IPI compõe o total (ICMS/PIS/COFINS já estão inclusos no preço)
+  const taxesTotal = Number(ipi) || 0
+  // Total da proposta: subtotal líquido + IPI (regra NF-e: TOTAL = PRODUTO + IPI)
   const total = Math.max(
     0,
     Math.round((subtotal - effectiveDiscountAmount + taxesTotal) * 100) / 100,
@@ -1558,20 +1521,21 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                       <div className="space-y-1">
                         <div className="flex items-center justify-between">
                           <Label className="text-[11px] font-semibold text-slate-600">
-                            Imp: (R$)
+                            Imp: (R$){' '}
+                            <span className="text-[10px] text-slate-400 font-normal">(IPI)</span>
                           </Label>
                           {manuallyEditedItemTaxIds.has(item.id || `item-idx-${index}`) ? (
                             <button
                               type="button"
                               onClick={() => handleItemChange(index, 'tax', '')}
-                              title="Clique para voltar ao cálculo automático com base na alíquota oficial"
+                              title="Clique para voltar ao cálculo automático com base na alíquota de IPI"
                               className="text-[10px] text-amber-600 hover:text-amber-800 hover:underline font-medium"
                             >
                               Auto
                             </button>
                           ) : (
                             <span className="text-[10px] text-emerald-600 font-medium">
-                              Auto ({combinedTaxRatePercent.toFixed(1)}%)
+                              Auto IPI ({combinedTaxRatePercent.toFixed(2)}%)
                             </span>
                           )}
                         </div>
@@ -1579,7 +1543,7 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                           type="number"
                           min="0"
                           step="0.01"
-                          placeholder="Ex: 71.31"
+                          placeholder="Ex: 211.25"
                           value={item.tax ?? ''}
                           onChange={(e) =>
                             handleItemChange(
@@ -1617,7 +1581,7 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                             <Label className="text-[11px] font-semibold text-amber-900 flex items-center justify-between">
                               <span>Valor Unit. c/ Imposto (R$)</span>
                               <span className="text-[10px] text-amber-700 font-normal">
-                                unitário + imposto
+                                unitário + IPI
                               </span>
                             </Label>
                             <div className="h-9 rounded-md bg-white/80 border border-amber-200 px-3 flex items-center font-mono text-xs font-bold text-amber-950">
@@ -1629,7 +1593,7 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                             <Label className="text-[11px] font-semibold text-amber-900 flex items-center justify-between">
                               <span>Valor Total c/ Imposto (R$)</span>
                               <span className="text-[10px] text-amber-700 font-normal">
-                                total + impostos da linha
+                                total + IPI da linha
                               </span>
                             </Label>
                             <div className="h-9 rounded-md bg-white/80 border border-amber-200 px-3 flex items-center font-mono text-xs font-black text-amber-950">
@@ -1766,8 +1730,8 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                   3. Impostos, Desconto Comercial e Valor Total
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Tabela oficial de impostos Corteplan calculada sobre o subtotal, com campo de
-                  desconto integrado.
+                  Regra NF-e: ICMS, PIS e COFINS já inclusos no preço (informativos) · IPI acrescido
+                  ao total. Total = Produto + IPI.
                 </p>
               </div>
 
@@ -1796,7 +1760,9 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
               {/* ICMS (12%) */}
               <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs font-bold text-slate-900">ICMS</Label>
+                  <Label className="text-xs font-bold text-slate-900">
+                    ICMS <span className="text-[10px] text-slate-400 font-normal">(incluso)</span>
+                  </Label>
                   <span className="text-[11px] text-slate-500 font-medium">Padrão: 12%</span>
                 </div>
                 <div className="space-y-1.5">
@@ -1834,7 +1800,9 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
               {/* IPI (3,25%) */}
               <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs font-bold text-slate-900">IPI</Label>
+                  <Label className="text-xs font-bold text-slate-900">
+                    IPI <span className="text-[10px] text-amber-600 font-normal">(acrescido)</span>
+                  </Label>
                   <span className="text-[11px] text-slate-500 font-medium">Padrão: 3,25%</span>
                 </div>
                 <div className="space-y-1.5">
@@ -1872,7 +1840,9 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
               {/* PIS (0,65%) */}
               <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs font-bold text-slate-900">PIS</Label>
+                  <Label className="text-xs font-bold text-slate-900">
+                    PIS <span className="text-[10px] text-slate-400 font-normal">(incluso)</span>
+                  </Label>
                   <span className="text-[11px] text-slate-500 font-medium">Padrão: 0,65%</span>
                 </div>
                 <div className="space-y-1.5">
@@ -1910,7 +1880,9 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
               {/* COFINS (3%) */}
               <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs font-bold text-slate-900">COFINS</Label>
+                  <Label className="text-xs font-bold text-slate-900">
+                    COFINS <span className="text-[10px] text-slate-400 font-normal">(incluso)</span>
+                  </Label>
                   <span className="text-[11px] text-slate-500 font-medium">Padrão: 3%</span>
                 </div>
                 <div className="space-y-1.5">
@@ -2068,10 +2040,13 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                   </div>
                 )}
                 <div className="flex justify-between items-center text-slate-600">
-                  <span>Soma dos Impostos:</span>
+                  <span>IPI (acrescido):</span>
                   <span className="font-mono font-semibold text-slate-800">
                     + {formatCurrencyBRL(taxesTotal)}
                   </span>
+                </div>
+                <div className="text-[10px] text-slate-400 -mt-0.5">
+                  ICMS, PIS e COFINS já inclusos no preço (informativos)
                 </div>
                 <div className="pt-1.5 border-t border-slate-200 flex justify-between items-center">
                   <span className="font-bold text-slate-900 uppercase">Total da Proposta:</span>
@@ -2534,20 +2509,21 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                 </div>
               </div>
 
-              {/* Discriminativo de Impostos — decomposição fiscal (método NF-e 1175) sobre o Total com Impostos */}
+              {/* Quadro de impostos — regra NF-e Corteplan: preço do produto já inclui ICMS/PIS/COFINS (informativos); IPI é acrescido */}
               {(() => {
-                const d = decomposeTaxes(total, {
+                const base = Math.round((subtotal - effectiveDiscountAmount) * 100) / 100
+                const d = decomposeTaxes(base, {
                   icmsPercent,
                   ipiPercent,
                   pisPercent,
                   cofinsPercent,
                 })
-                const rows: Array<[string, number]> = [
-                  ['Base Produtos', d.base],
-                  ['ICMS', d.icms],
-                  ['IPI', d.ipi],
-                  ['PIS', d.pis],
-                  ['COFINS', d.cofins],
+                const rows: Array<[string, number, string]> = [
+                  ['Produtos', d.base, ''],
+                  ['ICMS', d.icms, 'incluso'],
+                  ['IPI', d.ipi, 'acrescido'],
+                  ['PIS', d.pis, 'incluso'],
+                  ['COFINS', d.cofins, 'incluso'],
                 ]
                 const hasVal = rows.some(([, v]) => v > 0)
                 if (!hasVal) return null
@@ -2556,14 +2532,29 @@ Componentes elétricos, quando aplicáveis, serão fornecidos prontos para conex
                     <div className="font-bold text-slate-700 text-[11px] uppercase">
                       Impostos discriminados
                     </div>
-                    {rows.map(([label, v]) =>
-                      v > 0 ? (
+                    {rows.map(([label, v, tag]) =>
+                      v > 0 || label === 'Produtos' ? (
                         <div key={label} className="flex justify-between">
-                          <span>{label}</span>
+                          <span>
+                            {label}
+                            {tag && (
+                              <span
+                                className={`ml-1.5 text-[10px] font-medium ${
+                                  tag === 'acrescido' ? 'text-amber-700' : 'text-slate-400'
+                                }`}
+                              >
+                                ({tag})
+                              </span>
+                            )}
+                          </span>
                           <span className="font-mono">{formatCurrencyBRL(v)}</span>
                         </div>
                       ) : null,
                     )}
+                    <div className="flex justify-between font-semibold text-slate-800 pt-0.5">
+                      <span>TOTAL</span>
+                      <span className="font-mono">{formatCurrencyBRL(d.total)}</span>
+                    </div>
                   </div>
                 )
               })()}
